@@ -45,8 +45,22 @@ export default function AnalyzePage() {
   }, [usePerAgentRent, totalOfficeRent, inputs.agents, inputs.team_leaders]);
 
   const handleInputChange = (field: keyof Inputs, value: string) => {
-    const numValue = parseFloat(value);
-    setInputs((prev) => ({ ...prev, [field]: isNaN(numValue) ? 0 : numValue }));
+    // Special handling for gross_rate: accept percentage (e.g., "4%" or "4")
+    if (field === "gross_rate") {
+      // Remove % sign if present and convert to decimal
+      const cleanedValue = value.replace(/%/g, "").trim();
+      const numValue = parseFloat(cleanedValue);
+      // If value is between 1-100, treat as percentage; otherwise treat as decimal
+      const decimalValue = isNaN(numValue) 
+        ? 0 
+        : numValue > 1 
+          ? numValue / 100  // If > 1, treat as percentage (4 -> 0.04)
+          : numValue;        // If <= 1, treat as decimal (0.04 stays 0.04)
+      setInputs((prev) => ({ ...prev, [field]: Math.max(0, Math.min(1, decimalValue)) }));
+    } else {
+      const numValue = parseFloat(value);
+      setInputs((prev) => ({ ...prev, [field]: isNaN(numValue) ? 0 : numValue }));
+    }
     // Clear error for this field
     setErrors((prev) => {
       const newErrors = { ...prev };
@@ -370,19 +384,40 @@ export default function AnalyzePage() {
               </div>
               <div>
                 <Label htmlFor="gross_rate">
-                  Gross Revenue Rate (% as decimal, e.g., 0.04 = 4%)
+                  Gross Revenue Rate (%)
                 </Label>
                 <Input
                   id="gross_rate"
-                  type="number"
-                  step="0.01"
-                  value={inputs.gross_rate}
+                  type="text"
+                  placeholder="4 or 4%"
+                  value={inputs.gross_rate > 0 ? (inputs.gross_rate * 100).toFixed(2) : ""}
                   onChange={(e) =>
                     handleInputChange("gross_rate", e.target.value)
                   }
-                  onFocus={handleFocus}
+                  onFocus={(e) => {
+                    // Select all text when focused for easy editing
+                    e.target.select();
+                    // If showing 0, clear it
+                    if (inputs.gross_rate === 0) {
+                      e.target.value = "";
+                    }
+                  }}
+                  onBlur={(e) => {
+                    // Format as percentage on blur if empty
+                    if (!e.target.value.trim()) {
+                      e.target.value = "0.00";
+                    }
+                  }}
                   className={errors.gross_rate ? "border-red-500" : ""}
                 />
+                {!errors.gross_rate && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Enter as percentage (e.g., 4 or 4%)
+                  </p>
+                )}
+                {errors.gross_rate && (
+                  <p className="text-xs text-red-500 mt-1">{errors.gross_rate}</p>
+                )}
               </div>
             </CardContent>
           </Card>

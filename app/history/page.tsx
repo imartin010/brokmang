@@ -82,7 +82,7 @@ export default function HistoryPage() {
       ["Marketing", record.inputs.marketing],
       ["SIM", record.inputs.sim],
       ["Franchise Owner Salary", record.inputs.franchise_owner_salary],
-      ["Gross Rate", record.inputs.gross_rate],
+      ["Gross Rate", `${(record.inputs.gross_rate * 100).toFixed(2)}%`],
       ["Agent Comm per 1M", record.inputs.agent_comm_per_1m],
       ["TL Comm per 1M", record.inputs.tl_comm_per_1m],
       ["Withholding", record.inputs.withholding],
