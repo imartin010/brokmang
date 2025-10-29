@@ -57,6 +57,19 @@ export default function AnalyzePage() {
           ? numValue / 100  // If > 1, treat as percentage (4 -> 0.04)
           : numValue;        // If <= 1, treat as decimal (0.04 stays 0.04)
       setInputs((prev) => ({ ...prev, [field]: Math.max(0, Math.min(1, decimalValue)) }));
+    } else if (field === "income_tax") {
+      // Special handling for income_tax: accept percentage (e.g., "7%" or "7" or "10")
+      // Range is 7-12%, which converts to 0.07-0.12 decimal
+      const cleanedValue = value.replace(/%/g, "").trim();
+      const numValue = parseFloat(cleanedValue);
+      // If value is >= 1, treat as percentage (7 -> 0.07); otherwise treat as decimal (0.07 stays 0.07)
+      const decimalValue = isNaN(numValue)
+        ? 0.07 // Default to minimum
+        : numValue >= 1
+          ? numValue / 100  // If >= 1, treat as percentage (7 -> 0.07, 10 -> 0.10)
+          : numValue;        // If < 1, treat as decimal (0.07 stays 0.07)
+      // Constrain to valid range (0.07-0.12)
+      setInputs((prev) => ({ ...prev, [field]: Math.max(0.07, Math.min(0.12, decimalValue)) }));
     } else {
       const numValue = parseFloat(value);
       setInputs((prev) => ({ ...prev, [field]: isNaN(numValue) ? 0 : numValue }));
@@ -488,19 +501,37 @@ export default function AnalyzePage() {
               </div>
               <div>
                 <Label htmlFor="income_tax">
-                  Income Tax (0.07–0.12, i.e., 7-12%)
+                  Income Tax (%)
                 </Label>
                 <Input
                   id="income_tax"
-                  type="number"
-                  step="0.01"
-                  value={inputs.income_tax}
+                  type="text"
+                  placeholder="7-12 or 7%-12%"
+                  value={inputs.income_tax > 0 ? (inputs.income_tax * 100).toFixed(2) : ""}
                   onChange={(e) =>
                     handleInputChange("income_tax", e.target.value)
                   }
-                  onFocus={handleFocus}
+                  onFocus={(e) => {
+                    // Select all text when focused for easy editing
+                    e.target.select();
+                    // If showing 0, clear it
+                    if (inputs.income_tax === 0) {
+                      e.target.value = "";
+                    }
+                  }}
+                  onBlur={(e) => {
+                    // Format as percentage on blur if empty
+                    if (!e.target.value.trim()) {
+                      e.target.value = "7.00";
+                    }
+                  }}
                   className={errors.income_tax ? "border-red-500" : ""}
                 />
+                {!errors.income_tax && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Enter as percentage (7-12% range, e.g., 7, 10, or 12%)
+                  </p>
+                )}
                 {errors.income_tax && (
                   <p className="text-xs text-red-500 mt-1">
                     {errors.income_tax}

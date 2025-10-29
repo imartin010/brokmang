@@ -87,7 +87,7 @@ export default function HistoryPage() {
       ["TL Comm per 1M", record.inputs.tl_comm_per_1m],
       ["Withholding", record.inputs.withholding],
       ["VAT", record.inputs.vat],
-      ["Income Tax", record.inputs.income_tax],
+      ["Income Tax", `${(record.inputs.income_tax * 100).toFixed(2)}%`],
       ["", ""],
       ["RESULTS", ""],
       ["Cost Per Seat", record.results.cost_per_seat],
