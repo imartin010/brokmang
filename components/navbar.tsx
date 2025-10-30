@@ -27,25 +27,56 @@ import { supabase } from "@/lib/supabase-browser";
 import { signOut } from "@/lib/auth";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/zustand/store";
+import type { UserAccountType } from "@/lib/types";
 
 export function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
+  const { userAccountType, setUserAccountType, hasFinancialAccess } = useAuth();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user);
+      
+      // Fetch user account type
+      if (data.user) {
+        fetchUserAccountType(data.user.id);
+      }
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      
+      // Fetch user account type on auth state change
+      if (session?.user) {
+        fetchUserAccountType(session.user.id);
+      } else {
+        setUserAccountType(null);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const fetchUserAccountType = async (userId: string) => {
+    try {
+      const { data } = await supabase
+        .from("sales_agents")
+        .select("user_type")
+        .eq("user_id", userId)
+        .single();
+
+      if (data?.user_type) {
+        setUserAccountType(data.user_type as UserAccountType);
+      }
+    } catch (error) {
+      console.error("Error fetching user account type:", error);
+    }
+  };
 
   const handleSignOut = async () => {
     const result = await signOut();
@@ -54,13 +85,29 @@ export function Navbar() {
     }
   };
 
-  const links = [
+  // Base links available to all authenticated users
+  const baseLinks = [
     { href: "/", label: "Home", icon: Home },
     { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/analyze", label: "Analyze", icon: Calculator },
-    { href: "/history", label: "History", icon: History },
+  ];
+
+  // Financial tools - CEO only
+  const financialLinks = [
+    { href: "/analyze", label: "Break-Even Analysis", icon: Calculator, ceoOnly: true },
+    { href: "/history", label: "Analysis History", icon: History, ceoOnly: true },
+  ];
+
+  // Common tools - available to both
+  const commonLinks = [
     { href: "/reports", label: "Reports", icon: FileText },
-    { href: "/insights", label: "Insights", icon: Lightbulb },
+    { href: "/insights", label: "AI Insights", icon: Lightbulb },
+  ];
+
+  // Combine links based on user type
+  const links = [
+    ...baseLinks,
+    ...(hasFinancialAccess() ? financialLinks : []),
+    ...commonLinks,
   ];
 
   const crmLinks = [

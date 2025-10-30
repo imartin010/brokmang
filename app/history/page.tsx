@@ -2,19 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { History as HistoryIcon, Trash2, Download, Eye } from "lucide-react";
+import { History as HistoryIcon, Trash2, Download, Eye, Lock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase-browser";
 import { BreakEvenRecord } from "@/lib/types";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/zustand/store";
 
 export default function HistoryPage() {
   const router = useRouter();
+  const { hasFinancialAccess, userAccountType } = useAuth();
   const [records, setRecords] = useState<BreakEvenRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [checkingAccess, setCheckingAccess] = useState(true);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -26,11 +29,75 @@ export default function HistoryPage() {
         return;
       }
       setUser(user);
-      loadRecords();
+      
+      // Check user account type
+      const { data } = await supabase
+        .from("sales_agents")
+        .select("user_type")
+        .eq("user_id", user.id)
+        .single();
+        
+      setCheckingAccess(false);
+      
+      // Load records only if CEO
+      if (data?.user_type !== "team_leader") {
+        loadRecords();
+      }
     };
 
     checkUser();
   }, [router]);
+
+  // Show access denied if team leader
+  if (checkingAccess) {
+    return (
+      <div className="container mx-auto px-4 py-8 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasFinancialAccess() && userAccountType === "team_leader") {
+    return (
+      <div className="container mx-auto px-4 py-8 min-h-screen flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center max-w-md"
+        >
+          <Card>
+            <CardContent className="p-8">
+              <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center mx-auto mb-4">
+                <Lock className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">Access Restricted</h2>
+              <p className="text-muted-foreground mb-6">
+                Analysis History is only available to CEO accounts. This contains financial analysis records that require business oversight permissions.
+              </p>
+              <div className="space-y-2">
+                <Button
+                  className="w-full"
+                  onClick={() => router.push("/dashboard")}
+                >
+                  Go to Dashboard
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => router.push("/reports")}
+                >
+                  View Reports Instead
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+    );
+  }
 
   const loadRecords = async () => {
     try {

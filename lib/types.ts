@@ -41,6 +41,8 @@ export type BreakEvenRecord = {
 // CRM / Sales Performance Types
 // =====================================================
 
+export type UserAccountType = 'ceo' | 'team_leader';
+
 export type SalesAgent = {
   id: string;
   user_id: string;
@@ -51,6 +53,7 @@ export type SalesAgent = {
   full_name: string;
   phone?: string | null;
   role: 'agent' | 'team_leader'; // 'AGENT' | 'TEAM_LEADER' in DB
+  user_type?: UserAccountType | null; // v1.1: account type (ceo or team_leader)
   is_active: boolean;
   created_at: string;
   

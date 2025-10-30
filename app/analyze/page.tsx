@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Calculator, Save, RefreshCw, Sparkles } from "lucide-react";
+import { Calculator, Save, RefreshCw, Sparkles, Lock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,9 +15,11 @@ import { DollarSign, TrendingUp, Users, PieChart as PieChartIcon } from "lucide-
 import { supabase } from "@/lib/supabase-browser";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/zustand/store";
 
 export default function AnalyzePage() {
   const router = useRouter();
+  const { hasFinancialAccess, userAccountType } = useAuth();
   const [inputs, setInputs] = useState<Inputs>(DEFAULT_INPUTS);
   const [results, setResults] = useState<Results | null>(null);
   const [loading, setLoading] = useState(false);
@@ -26,12 +28,91 @@ export default function AnalyzePage() {
   const [user, setUser] = useState<any>(null);
   const [usePerAgentRent, setUsePerAgentRent] = useState(true);
   const [totalOfficeRent, setTotalOfficeRent] = useState(0);
+  const [checkingAccess, setCheckingAccess] = useState(true);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user);
+      
+      // Check user account type for access control
+      if (data.user) {
+        checkUserAccess(data.user.id);
+      } else {
+        setCheckingAccess(false);
+      }
     });
   }, []);
+
+  const checkUserAccess = async (userId: string) => {
+    try {
+      const { data } = await supabase
+        .from("sales_agents")
+        .select("user_type")
+        .eq("user_id", userId)
+        .single();
+
+      // If user is team leader, show access denied
+      if (data?.user_type === "team_leader") {
+        setCheckingAccess(false);
+      } else {
+        setCheckingAccess(false);
+      }
+    } catch (error) {
+      console.error("Error checking user access:", error);
+      setCheckingAccess(false);
+    }
+  };
+
+  // Show access denied if team leader
+  if (checkingAccess) {
+    return (
+      <div className="container mx-auto px-4 py-8 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasFinancialAccess() && userAccountType === "team_leader") {
+    return (
+      <div className="container mx-auto px-4 py-8 min-h-screen flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center max-w-md"
+        >
+          <Card>
+            <CardContent className="p-8">
+              <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center mx-auto mb-4">
+                <Lock className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">Access Restricted</h2>
+              <p className="text-muted-foreground mb-6">
+                Break-Even Analysis is only available to CEO accounts. This financial tool requires full business oversight permissions.
+              </p>
+              <div className="space-y-2">
+                <Button
+                  className="w-full"
+                  onClick={() => router.push("/dashboard")}
+                >
+                  Go to Dashboard
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => router.push("/reports")}
+                >
+                  View Reports Instead
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+    );
+  }
 
   // Calculate rent per agent when total rent changes
   useEffect(() => {

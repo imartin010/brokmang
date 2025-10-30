@@ -31,8 +31,26 @@ export default function AuthCallback() {
             return;
           }
 
+          // Check if user has selected account type
+          const { data: { user } } = await supabase.auth.getUser();
+          
+          if (user) {
+            const { data: agent } = await supabase
+              .from("sales_agents")
+              .select("user_type")
+              .eq("user_id", user.id)
+              .single();
+
+            if (!agent?.user_type) {
+              // User hasn't selected type yet, redirect to selection page
+              setMessage("Email confirmed! Setting up your account...");
+              setTimeout(() => router.push("/select-account-type"), 2000);
+              return;
+            }
+          }
+
           setMessage("Email confirmed! Redirecting...");
-          setTimeout(() => router.push("/"), 2000);
+          setTimeout(() => router.push("/dashboard"), 2000);
         } else {
           setMessage("Invalid confirmation link.");
           setTimeout(() => router.push("/auth"), 3000);
