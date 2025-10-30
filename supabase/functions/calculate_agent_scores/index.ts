@@ -273,11 +273,26 @@ serve(async (req: Request) => {
       settings = settingsData;
     }
 
-    // 2. Get all active agents for this user
+    // 2. Get user's organizations to determine org context
+    const { data: memberships, error: membershipError } = await supabase
+      .from("memberships")
+      .select("org_id")
+      .eq("user_id", userId);
+
+    if (membershipError || !memberships || memberships.length === 0) {
+      return new Response(
+        JSON.stringify({ message: "User has no organizations", processed: 0 }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const orgIds = memberships.map(m => m.org_id);
+
+    // 3. Get all active agents for user's organizations
     const { data: agents, error: agentsError } = await supabase
       .from("sales_agents")
-      .select("id")
-      .eq("user_id", userId)
+      .select("id, user_id, org_id")
+      .in("org_id", orgIds)
       .eq("is_active", true);
 
     if (agentsError) {
@@ -291,22 +306,22 @@ serve(async (req: Request) => {
       );
     }
 
-    // 3. Calculate start and end dates for the month
+    // 4. Calculate start and end dates for the month
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0); // Last day of month
 
     const startDateStr = startDate.toISOString().split("T")[0];
     const endDateStr = endDate.toISOString().split("T")[0];
 
-    // 4. Process each agent
+    // 5. Process each agent
     const results = [];
     for (const agent of agents) {
       // Load all logs for this agent in the month
       const { data: logs, error: logsError } = await supabase
         .from("agent_daily_logs")
         .select("*")
-        .eq("user_id", userId)
-        .eq("agent_id", agent.id)
+        .eq("user_id", agent.user_id)
+        .eq("org_id", agent.org_id)
         .gte("log_date", startDateStr)
         .lte("log_date", endDateStr)
         .order("log_date", { ascending: true });
@@ -327,7 +342,8 @@ serve(async (req: Request) => {
         .from("agent_monthly_scores")
         .upsert(
           {
-            user_id: userId,
+            user_id: agent.user_id,
+            org_id: agent.org_id,
             agent_id: agent.id,
             year,
             month,
@@ -335,7 +351,7 @@ serve(async (req: Request) => {
             kpis,
           },
           {
-            onConflict: "user_id,agent_id,year,month",
+            onConflict: "org_id,agent_id,year,month",
           }
         );
 
@@ -349,6 +365,7 @@ serve(async (req: Request) => {
 
       results.push({
         agent_id: agent.id,
+        org_id: agent.org_id,
         score: finalScore,
         kpis,
       });
