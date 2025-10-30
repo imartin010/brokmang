@@ -67,15 +67,19 @@ export default function SelectAccountTypePage() {
         }),
       });
 
+      const result = await response.json();
+
       if (!response.ok) {
-        throw new Error("Failed to set user type");
+        const errorMsg = result.error || "Failed to set user type";
+        const details = result.details ? `: ${result.details}` : "";
+        throw new Error(errorMsg + details);
       }
 
       // Redirect to dashboard
       router.push("/dashboard");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error setting user type:", error);
-      alert("Failed to set account type. Please try again.");
+      alert(`Failed to set account type: ${error.message}\n\nPlease try again or contact support.`);
     }
   };
 

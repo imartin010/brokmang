@@ -31,18 +31,53 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Update user type in sales_agents table
-    const { data, error } = await supabase
+    // Check if user exists in sales_agents table
+    const { data: existingAgent } = await supabase
       .from("sales_agents")
-      .update({ user_type })
+      .select("id, user_id")
       .eq("user_id", user_id)
-      .select()
       .single();
 
+    let data;
+    let error;
+
+    if (existingAgent) {
+      // Update existing record
+      const result = await supabase
+        .from("sales_agents")
+        .update({ user_type })
+        .eq("user_id", user_id)
+        .select()
+        .single();
+      
+      data = result.data;
+      error = result.error;
+    } else {
+      // Create new record for new user
+      // Get user email for default name
+      const { data: authUser } = await supabase.auth.admin.getUserById(user_id);
+      const defaultName = authUser?.user?.email?.split('@')[0] || "User";
+      
+      const result = await supabase
+        .from("sales_agents")
+        .insert({
+          user_id,
+          user_type,
+          full_name: defaultName,
+          role: user_type === 'ceo' ? 'team_leader' : 'agent', // Default role
+          is_active: true,
+        })
+        .select()
+        .single();
+      
+      data = result.data;
+      error = result.error;
+    }
+
     if (error) {
-      console.error("Error updating user type:", error);
+      console.error("Error setting user type:", error);
       return NextResponse.json(
-        { error: "Failed to update user type", details: error.message },
+        { error: "Failed to set user type", details: error.message },
         { status: 500 }
       );
     }
