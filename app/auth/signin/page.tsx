@@ -1,65 +1,45 @@
 /**
- * Auth Page - Clean Rebuild
- * Simple, reliable sign-in/sign-up
+ * Sign In Page
+ * Simple, clean sign-in form
  */
 
 'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Mail, Lock, Loader2 } from 'lucide-react';
+import { Mail, Lock, Loader2, ArrowLeft } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { signUpUser, signInUser } from '@/lib/auth-simple';
+import { signInUser } from '@/lib/auth-simple';
 
-export default function AuthPage() {
+export default function SignInPage() {
   const router = useRouter();
-  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState<'success' | 'error'>('success');
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setMessage('');
+    setError('');
 
     try {
-      let result;
-      
-      if (isSignUp) {
-        result = await signUpUser(email, password);
-      } else {
-        result = await signInUser(email, password);
-      }
-
-      setMessage(result.message);
-      setMessageType(result.success ? 'success' : 'error');
+      const result = await signInUser(email, password);
 
       if (result.success) {
-        if (isSignUp && result.message.includes('email')) {
-          // Email verification required - show message
-          setTimeout(() => {
-            setEmail('');
-            setPassword('');
-            setIsSignUp(false);
-          }, 3000);
-        } else {
-          // Success - redirect to dashboard
-          setTimeout(() => {
-            router.push('/dashboard');
-            router.refresh();
-          }, 500);
-        }
+        // Redirect to dashboard
+        router.push('/dashboard');
+        router.refresh();
+      } else {
+        setError(result.message);
       }
-    } catch (error: any) {
-      setMessage(error.message || 'Authentication failed');
-      setMessageType('error');
+    } catch (err: any) {
+      setError(err.message || 'Sign in failed');
     } finally {
       setLoading(false);
     }
@@ -68,19 +48,23 @@ export default function AuthPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-accent/20 p-4">
       <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md"
       >
+        {/* Back to Home */}
+        <Link href="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
+          <ArrowLeft className="h-4 w-4" />
+          Back to home
+        </Link>
+
         <Card className="glass">
           <CardHeader className="space-y-1">
             <CardTitle className="text-3xl font-bold text-center bg-gradient-to-r from-[#257CFF] to-[#F45A2A] bg-clip-text text-transparent">
-              {isSignUp ? 'Create Account' : 'Welcome Back'}
+              Welcome Back
             </CardTitle>
-            <CardDescription className="text-center">
-              {isSignUp
-                ? 'Sign up to get started with Brokmang.'
-                : 'Sign in to access your dashboard'}
+            <CardDescription className="text-center text-base">
+              Sign in to access your dashboard
             </CardDescription>
           </CardHeader>
 
@@ -100,6 +84,7 @@ export default function AuthPage() {
                     className="pl-10"
                     required
                     disabled={loading}
+                    autoComplete="email"
                   />
                 </div>
               </div>
@@ -119,27 +104,19 @@ export default function AuthPage() {
                     required
                     minLength={6}
                     disabled={loading}
+                    autoComplete="current-password"
                   />
                 </div>
-                {isSignUp && (
-                  <p className="text-xs text-muted-foreground">
-                    Must be at least 6 characters
-                  </p>
-                )}
               </div>
 
-              {/* Message */}
-              {message && (
+              {/* Error Message */}
+              {error && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={`p-3 rounded-lg text-sm ${
-                    messageType === 'success'
-                      ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-                      : 'bg-red-500/10 text-red-600 dark:text-red-400'
-                  }`}
+                  className="p-3 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-sm"
                 >
-                  {message}
+                  {error}
                 </motion.div>
               )}
 
@@ -153,31 +130,22 @@ export default function AuthPage() {
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {isSignUp ? 'Creating account...' : 'Signing in...'}
+                    Signing in...
                   </>
                 ) : (
-                  <>{isSignUp ? 'Create Account' : 'Sign In'}</>
+                  'Sign In'
                 )}
               </Button>
             </form>
 
-            {/* Toggle Sign Up/Sign In */}
+            {/* Sign Up Link */}
             <div className="mt-6 text-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignUp(!isSignUp);
-                  setMessage('');
-                  setEmail('');
-                  setPassword('');
-                }}
-                className="text-sm text-primary hover:underline"
-                disabled={loading}
-              >
-                {isSignUp
-                  ? 'Already have an account? Sign in'
-                  : "Don't have an account? Sign up"}
-              </button>
+              <p className="text-sm text-muted-foreground">
+                Don't have an account?{' '}
+                <Link href="/auth/signup" className="text-primary hover:underline font-medium">
+                  Sign up
+                </Link>
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -185,3 +153,4 @@ export default function AuthPage() {
     </div>
   );
 }
+

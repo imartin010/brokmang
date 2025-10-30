@@ -1,597 +1,77 @@
-"use client";
+/**
+ * Dashboard Page - Clean Rebuild
+ * Client-side auth check with role-based rendering
+ */
 
-import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import {
-  DollarSign,
-  TrendingUp,
-  Users,
-  PieChart as PieChartIcon,
-  RefreshCw,
-  BarChart3,
-  Target,
-  Calendar,
-} from "lucide-react";
-import { KPICard } from "@/components/kpi-card";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts";
-import { formatCurrency, formatNumber } from "@/lib/utils";
-import { DEFAULT_INPUTS } from "@/lib/schemas";
-import { Results, Inputs } from "@/lib/types";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { supabase } from "@/lib/supabase-browser";
-import { useAuth } from "@/lib/zustand/store";
-import type { UserAccountType } from "@/lib/types";
+'use client';
 
-export default function Dashboard() {
-  const [results, setResults] = useState<Results | null>(null);
-  const [inputs, setInputs] = useState<Inputs>(DEFAULT_INPUTS);
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase-browser';
+import { Loader2 } from 'lucide-react';
+import CeoDashboard from '@/components/dashboard/CeoDashboard';
+import TeamLeaderDashboard from '@/components/dashboard/TeamLeaderDashboard';
+
+export default function DashboardPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [userType, setUserType] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
-  const { userAccountType, setUserAccountType, hasFinancialAccess } = useAuth();
-  const [checkingAccess, setCheckingAccess] = useState(true);
-  const [localUserType, setLocalUserType] = useState<UserAccountType | null>(null);
 
   useEffect(() => {
-    loadLatestScenario();
+    checkAuth();
   }, []);
 
-  const loadLatestScenario = async () => {
+  const checkAuth = async () => {
     try {
-      setLoading(true);
+      // Check session
+      const { data: { session } } = await supabase.auth.getSession();
       
-      // Check if user is authenticated
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      setUser(currentUser);
-
-      if (!currentUser) {
-        setLoading(false);
-        setCheckingAccess(false);
+      if (!session) {
+        router.push('/auth');
         return;
       }
 
-      // Always fetch fresh user type from database (don't trust Zustand cache)
-      const { data: agentData } = await supabase
-        .from("sales_agents")
-        .select("user_type")
-        .eq("user_id", currentUser.id)
-        .single();
+      setUser(session.user);
 
-      const freshUserType = agentData?.user_type as UserAccountType | null;
-      console.log('🔍 Dashboard: Fetched user_type from DB:', freshUserType);
-      console.log('🔍 Dashboard: Full agent data:', agentData);
-      
-      setLocalUserType(freshUserType);
-      
-      // Update Zustand with fresh data
-      if (freshUserType) {
-        setUserAccountType(freshUserType);
-        console.log('✅ Dashboard: Updated Zustand with:', freshUserType);
-      }
+      // Check user type
+      const { data: agent } = await supabase
+        .from('sales_agents')
+        .select('user_type')
+        .eq('user_id', session.user.id)
+        .maybeSingle();
 
-      setCheckingAccess(false);
-
-      // If Team Leader, don't load financial data
-      if (freshUserType === 'team_leader') {
-        setLoading(false);
+      if (!agent?.user_type) {
+        // No role selected, redirect to selection
+        router.push('/select-account-type');
         return;
       }
 
-      // Fetch the most recent scenario
-      const { data, error } = await supabase
-        .from("break_even_records")
-        .select("*")
-        .eq("user_id", currentUser.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .single();
-
-      if (error) {
-        console.log("No saved scenarios yet:", error.message);
+      setUserType(agent.user_type);
         setLoading(false);
-        return;
-      }
-
-      if (data) {
-        console.log("✅ Loaded latest scenario from database");
-        setInputs(data.inputs);
-        setResults(data.results);
-      }
     } catch (error) {
-      console.error("Error loading scenario:", error);
-    } finally {
-      setLoading(false);
+      console.error('Auth check error:', error);
+      router.push('/auth');
     }
   };
 
-  if (loading || checkingAccess) {
+  if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-center h-96">
+      <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading dashboard...</p>
-          </div>
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading your dashboard...</p>
         </div>
       </div>
     );
   }
 
-  // Unified Dashboard - Show team management for both, financials for CEO only
-  // Use localUserType (fresh from DB) instead of Zustand cache
-  const showFinancialAccess = typeof hasFinancialAccess === 'function' ? hasFinancialAccess() : true;
-  const isCEO = localUserType === "ceo";
-  const isTeamLeader = localUserType === "team_leader";
-  
-  console.log('🎯 Dashboard Render Decision:', {
-    localUserType,
-    isCEO,
-    isTeamLeader,
-    zustandUserType: userAccountType,
-    hasResults: !!results,
-  });
-
-  // If no saved financial scenario OR user is Team Leader, show team management dashboard
-  if (!results || isTeamLeader) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-[#257CFF] to-[#F45A2A] bg-clip-text text-transparent">
-            {isCEO ? "Management Dashboard" : "Team Dashboard"}
-          </h1>
-          <p className="text-muted-foreground">
-            {isCEO ? "Manage your team and track performance" : "Your team performance and metrics"}
-          </p>
-        </motion.div>
-
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Link href="/crm/sales">
-            <Card className="glass hover:shadow-lg transition-shadow cursor-pointer h-full">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-full bg-blue-500/10">
-                    <Users className="h-6 w-6 text-blue-500" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-1">Team Members</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Manage your agents
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href="/crm/logs">
-            <Card className="glass hover:shadow-lg transition-shadow cursor-pointer h-full">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-full bg-green-500/10">
-                    <Calendar className="h-6 w-6 text-green-500" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-1">Daily Logs</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Track daily activities
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href="/reports">
-            <Card className="glass hover:shadow-lg transition-shadow cursor-pointer h-full">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-full bg-purple-500/10">
-                    <BarChart3 className="h-6 w-6 text-purple-500" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-1">Reports</h3>
-                    <p className="text-sm text-muted-foreground">
-                      View performance reports
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href="/insights">
-            <Card className="glass hover:shadow-lg transition-shadow cursor-pointer h-full">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 rounded-full bg-orange-500/10">
-                    <Target className="h-6 w-6 text-orange-500" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold mb-1">AI Insights</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Smart recommendations
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        </div>
-
-        {/* Financial Tools - CEO Only */}
-        {isCEO && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-              <DollarSign className="h-6 w-6 text-primary" />
-              Financial Tools
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-              <Link href="/analyze">
-                <Card className="glass hover:shadow-lg transition-shadow cursor-pointer h-full border-2 border-primary/20">
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 rounded-full bg-primary/10">
-                        <PieChartIcon className="h-6 w-6 text-primary" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold mb-1">Break-Even Analysis</h3>
-                        <p className="text-sm text-muted-foreground">
-                          Calculate costs and break-even point
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-
-              <Link href="/history">
-                <Card className="glass hover:shadow-lg transition-shadow cursor-pointer h-full border-2 border-primary/20">
-                  <CardContent className="p-6">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 rounded-full bg-primary/10">
-                        <TrendingUp className="h-6 w-6 text-primary" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold mb-1">Analysis History</h3>
-                        <p className="text-sm text-muted-foreground">
-                          View saved financial scenarios
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            </div>
-          </motion.div>
-        )}
-
-        {/* Welcome Message */}
-        <Card className="glass">
-          <CardContent className="p-8">
-            <div className="flex items-start gap-6">
-              <div className="p-4 rounded-full bg-primary/10">
-                {isCEO ? <TrendingUp className="h-10 w-10 text-primary" /> : <Users className="h-10 w-10 text-primary" />}
-              </div>
-              <div className="flex-1">
-                <h2 className="text-2xl font-bold mb-3">
-                  {isCEO ? "Welcome to Your Management Hub" : "Welcome to Your Team Dashboard"}
-                </h2>
-                <p className="text-muted-foreground mb-4">
-                  {isCEO 
-                    ? "As a CEO, you have full access to team management, sales performance tracking, and financial analysis tools. Use the cards above to navigate to different areas of your business."
-                    : "As a Team Leader, you can manage your team, track performance, view reports, and get AI-powered insights to improve your sales strategy."
-                  }
-                </p>
-                <div className="flex flex-wrap gap-3">
-                  <Link href="/crm/sales">
-                    <Button className="gradient-bg">
-                      <Users className="mr-2 h-4 w-4" />
-                      View Team
-                    </Button>
-                  </Link>
-                  {isCEO && (
-                    <Link href="/analyze">
-                      <Button variant="outline">
-                        <PieChartIcon className="mr-2 h-4 w-4" />
-                        Financial Analysis
-                      </Button>
-                    </Link>
-                  )}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // CEO Dashboard (Financial Tools)
-  if (!results) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
-        >
-          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-[#257CFF] to-[#F45A2A] bg-clip-text text-transparent">
-            Analysis Dashboard
-          </h1>
-          <p className="text-muted-foreground">
-            Your comprehensive break-even analysis results
-          </p>
-        </motion.div>
-
-        <Card className="glass max-w-2xl mx-auto">
-          <CardContent className="text-center py-16">
-            <div className="mb-6">
-              <TrendingUp className="h-20 w-20 mx-auto text-primary mb-4" />
-            </div>
-            <h2 className="text-2xl font-bold mb-3">
-              {user ? "No Saved Scenarios Yet" : "Ready to Analyze Your Brokerage?"}
-            </h2>
-            <p className="text-muted-foreground mb-8 max-w-md mx-auto">
-              {user 
-                ? "Start by creating your first analysis. Enter your business parameters to calculate cost per seat and break-even point."
-                : "Sign in and enter your business parameters to calculate cost per seat, operating expenses, and discover your break-even point with detailed financial breakdowns."
-              }
-            </p>
-            <div className="flex gap-4 justify-center">
-              <Link href="/analyze">
-                <Button className="gradient-bg" size="lg">
-                  <PieChartIcon className="mr-2 h-5 w-5" />
-                  Start Analysis
-                </Button>
-              </Link>
-            </div>
-            <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
-              <div className="p-4 rounded-lg bg-accent/50">
-                <Users className="h-8 w-8 text-primary mb-2" />
-                <h3 className="font-semibold mb-1">Team Structure</h3>
-                <p className="text-sm text-muted-foreground">
-                  Configure agents, team leaders, and costs
-                </p>
-              </div>
-              <div className="p-4 rounded-lg bg-accent/50">
-                <DollarSign className="h-8 w-8 text-primary mb-2" />
-                <h3 className="font-semibold mb-1">Financial Details</h3>
-                <p className="text-sm text-muted-foreground">
-                  Set commissions, rates, and expenses
-                </p>
-              </div>
-              <div className="p-4 rounded-lg bg-accent/50">
-                <PieChartIcon className="h-8 w-8 text-primary mb-2" />
-                <h3 className="font-semibold mb-1">Instant Results</h3>
-                <p className="text-sm text-muted-foreground">
-                  Get break-even analysis with charts
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Data for cost breakdown pie chart
-  const costBreakdownData = [
-    { name: "Rent", value: inputs.rent },
-    { name: "Salary", value: inputs.salary },
-    { name: "TL Share", value: inputs.team_leader_share },
-    { name: "Marketing", value: inputs.marketing },
-    { name: "Others", value: inputs.others },
-    { name: "SIM", value: inputs.sim },
-  ];
-
-  // Data for income tax sensitivity analysis
-  const sensitivityData = Array.from({ length: 6 }, (_, i) => {
-    const taxRate = 0.07 + i * 0.01;
-    const grossPer1M = 1_000_000 * inputs.gross_rate;
-    const commissionsPer1M =
-      inputs.agent_comm_per_1m + inputs.tl_comm_per_1m;
-    const taxesPer1M =
-      grossPer1M *
-      (inputs.withholding + inputs.vat + taxRate);
-    const netPer1M = grossPer1M - commissionsPer1M - taxesPer1M;
-    const breakEvenSales =
-      results.total_operating_cost / (netPer1M / 1_000_000);
-
-    return {
-      tax: `${(taxRate * 100).toFixed(0)}%`,
-      breakEven: breakEvenSales / 1_000_000,
-    };
-  });
-
-  const COLORS = ["#257CFF", "#F45A2A", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899"];
+  // Render appropriate dashboard based on role
+  const isCEO = userType === 'ceo' || userType === 'CEO';
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mb-8"
-      >
-        <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-[#257CFF] to-[#F45A2A] bg-clip-text text-transparent">
-          Analysis Dashboard
-        </h1>
-        <p className="text-muted-foreground">
-          Real-time insights from your most recent saved scenario
-        </p>
-        <div className="flex gap-3 mt-4">
-          <Link href="/analyze">
-            <Button className="gradient-bg">
-              <PieChartIcon className="mr-2 h-4 w-4" />
-              New Analysis
-            </Button>
-          </Link>
-          <Button variant="outline" onClick={loadLatestScenario}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
-        </div>
-      </motion.div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <KPICard
-          title="Cost Per Seat"
-          value={formatCurrency(results.cost_per_seat)}
-          subtitle="Monthly operational cost per agent"
-          icon={Users}
-          gradient="from-blue-500 to-cyan-500"
-          delay={0.1}
-        />
-        <KPICard
-          title="Total Operating Cost"
-          value={formatCurrency(results.total_operating_cost)}
-          subtitle="Total monthly expenses"
-          icon={DollarSign}
-          gradient="from-purple-500 to-pink-500"
-          delay={0.2}
-        />
-        <KPICard
-          title="Net Revenue Per 1M"
-          value={formatCurrency(results.net_rev_per_1m)}
-          subtitle="Profit per 1M EGP in sales"
-          icon={TrendingUp}
-          gradient="from-green-500 to-emerald-500"
-          delay={0.3}
-        />
-        <KPICard
-          title="Break-Even Sales"
-          value={`${formatNumber(results.break_even_sales_million, 2)}M`}
-          subtitle={formatCurrency(results.break_even_sales_egp)}
-          icon={PieChartIcon}
-          gradient="from-orange-500 to-red-500"
-          delay={0.4}
-        />
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* Cost Breakdown */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.5 }}
-        >
-          <Card className="glass">
-            <CardHeader>
-              <CardTitle>Cost Per Seat Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={costBreakdownData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) =>
-                      `${name}: ${(percent * 100).toFixed(0)}%`
-                    }
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {costBreakdownData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value: number) => formatCurrency(value)}
-                  />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {/* Income Tax Sensitivity */}
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.6 }}
-        >
-          <Card className="glass">
-            <CardHeader>
-              <CardTitle>Income Tax Sensitivity (7-12%)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={sensitivityData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="tax" />
-                  <YAxis />
-                  <Tooltip
-                    formatter={(value: number) =>
-                      `${formatNumber(value, 2)}M EGP`
-                    }
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="breakEven"
-                    stroke="#257CFF"
-                    strokeWidth={2}
-                    name="Break-Even (Million EGP)"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </motion.div>
-      </div>
-
-      {/* Calculation Steps */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.7 }}
-      >
-        <Card className="glass">
-          <CardHeader>
-            <CardTitle>Calculation Breakdown</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {results?.steps?.map((step, index) => (
-                <div
-                  key={index}
-                  className="p-4 rounded-lg bg-accent/50 border"
-                >
-                  <p className="text-sm text-muted-foreground mb-1">
-                    {step.label}
-                  </p>
-                  <p className="text-lg font-bold">
-                    {formatCurrency(step.value)}
-                  </p>
-                  {step.note && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {step.note}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+    <div className="min-h-screen bg-gradient-to-br from-background to-accent/10">
+      {isCEO ? <CeoDashboard /> : <TeamLeaderDashboard />}
     </div>
   );
 }
-

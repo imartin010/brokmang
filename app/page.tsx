@@ -222,20 +222,18 @@ export default function HomePage() {
             transition={{ duration: 0.5, delay: 0.3 }}
             className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12"
           >
-            <Link href="/analyze">
-              <Button size="lg" className="gradient-bg group text-lg px-8 py-6">
-                <PieChartIcon className="mr-2 h-5 w-5" />
-                Start Analyzing
+            <Link href="/auth/signup">
+              <Button size="lg" className="gradient-bg group text-lg px-10 py-6">
+                Get Started Free
                 <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
               </Button>
             </Link>
-            <Link href="/crm/sales">
-              <Button size="lg" variant="outline" className="text-lg px-8 py-6">
-                <Users className="mr-2 h-5 w-5" />
-                Manage Agents
-          </Button>
-        </Link>
-      </motion.div>
+            <Link href="/auth/signin">
+              <Button size="lg" variant="outline" className="text-lg px-10 py-6 border-2">
+                Sign In
+              </Button>
+            </Link>
+          </motion.div>
 
           {/* Stats */}
           <motion.div

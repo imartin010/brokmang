@@ -1,37 +1,42 @@
 /**
- * Select Account Type - Clean Rebuild
- * Simple role selection with database update
+ * Select Role Page (After Signup)
+ * User chooses CEO or Team Leader
  */
 
 'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase-browser';
 import { motion } from 'framer-motion';
 import { Briefcase, Users, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/lib/supabase-browser';
+import { cn } from '@/lib/utils';
 
 type UserType = 'ceo' | 'team_leader';
 
-export default function SelectAccountType() {
+export default function SelectRolePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<UserType | null>(null);
 
   const handleSelect = async (type: UserType) => {
     setLoading(true);
+    setSelectedRole(type);
 
     try {
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
-        throw new Error('Not authenticated');
+        throw new Error('Not authenticated. Please sign in first.');
       }
 
+      console.log('Saving user type:', type, 'for user:', user.id);
+
       // Insert or update user type
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('sales_agents')
         .upsert({
           user_id: user.id,
@@ -39,13 +44,16 @@ export default function SelectAccountType() {
           full_name: user.email?.split('@')[0] || 'User',
           is_active: true,
         }, {
-          onConflict: 'user_id'
+          onConflict: 'user_id',
+          returning: 'minimal'
         });
 
       if (error) {
         console.error('Database error:', error);
-        throw error;
+        throw new Error(error.message || 'Failed to save role');
       }
+
+      console.log('Role saved successfully');
 
       // Success - redirect to dashboard
       setTimeout(() => {
@@ -55,8 +63,9 @@ export default function SelectAccountType() {
 
     } catch (error: any) {
       console.error('Error selecting role:', error);
-      alert(`Error: ${error.message || 'Could not set role. Please try again.'}`);
+      alert(`Error: ${error.message || 'Could not save role. Please try again.'}`);
       setLoading(false);
+      setSelectedRole(null);
     }
   };
 
@@ -67,8 +76,9 @@ export default function SelectAccountType() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-4xl"
       >
+        {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-3 bg-gradient-to-r from-[#257CFF] to-[#F45A2A] bg-clip-text text-transparent">
+          <h1 className="text-4xl md:text-5xl font-bold mb-3 bg-gradient-to-r from-[#257CFF] to-[#F45A2A] bg-clip-text text-transparent">
             Choose Your Role
           </h1>
           <p className="text-muted-foreground text-lg">
@@ -76,6 +86,7 @@ export default function SelectAccountType() {
           </p>
         </div>
 
+        {/* Role Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* CEO Option */}
           <motion.div
@@ -85,14 +96,18 @@ export default function SelectAccountType() {
           >
             <Card 
               className={cn(
-                "glass cursor-pointer hover:shadow-xl transition-all hover:scale-105 h-full border-2",
-                loading ? "opacity-50 pointer-events-none" : "hover:border-primary/50"
+                "glass cursor-pointer hover:shadow-xl transition-all h-full border-2",
+                loading ? "opacity-50 pointer-events-none" : "hover:scale-105 hover:border-primary/50",
+                selectedRole === 'ceo' && "border-primary"
               )}
               onClick={() => !loading && handleSelect('ceo')}
             >
               <CardHeader>
                 <div className="flex justify-center mb-4">
-                  <div className="p-4 rounded-full bg-primary/10">
+                  <div className={cn(
+                    "p-4 rounded-full transition-colors",
+                    selectedRole === 'ceo' ? "bg-primary/20" : "bg-primary/10"
+                  )}>
                     <Briefcase className="h-12 w-12 text-primary" />
                   </div>
                 </div>
@@ -102,10 +117,10 @@ export default function SelectAccountType() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground text-center mb-4">
+                <p className="text-sm text-muted-foreground text-center mb-4 font-medium">
                   Full access to all features
                 </p>
-                <ul className="space-y-2 text-sm">
+                <ul className="space-y-2.5 text-sm">
                   <li className="flex items-start gap-2">
                     <span className="text-primary mt-0.5">✓</span>
                     <span>Financial analysis and break-even tools</span>
@@ -124,11 +139,13 @@ export default function SelectAccountType() {
                   </li>
                 </ul>
                 <Button 
+                  type="button"
                   disabled={loading} 
                   className="w-full gradient-bg mt-4"
                   size="lg"
+                  onClick={() => handleSelect('ceo')}
                 >
-                  {loading ? (
+                  {loading && selectedRole === 'ceo' ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Setting up...
@@ -149,14 +166,18 @@ export default function SelectAccountType() {
           >
             <Card 
               className={cn(
-                "glass cursor-pointer hover:shadow-xl transition-all hover:scale-105 h-full border-2",
-                loading ? "opacity-50 pointer-events-none" : "hover:border-primary/50"
+                "glass cursor-pointer hover:shadow-xl transition-all h-full border-2",
+                loading ? "opacity-50 pointer-events-none" : "hover:scale-105 hover:border-primary/50",
+                selectedRole === 'team_leader' && "border-primary"
               )}
               onClick={() => !loading && handleSelect('team_leader')}
             >
               <CardHeader>
                 <div className="flex justify-center mb-4">
-                  <div className="p-4 rounded-full bg-primary/10">
+                  <div className={cn(
+                    "p-4 rounded-full transition-colors",
+                    selectedRole === 'team_leader' ? "bg-primary/20" : "bg-primary/10"
+                  )}>
                     <Users className="h-12 w-12 text-primary" />
                   </div>
                 </div>
@@ -166,10 +187,10 @@ export default function SelectAccountType() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <p className="text-sm text-muted-foreground text-center mb-4">
+                <p className="text-sm text-muted-foreground text-center mb-4 font-medium">
                   Team management focused
                 </p>
-                <ul className="space-y-2 text-sm">
+                <ul className="space-y-2.5 text-sm">
                   <li className="flex items-start gap-2">
                     <span className="text-primary mt-0.5">✓</span>
                     <span>Team member management and tracking</span>
@@ -188,11 +209,13 @@ export default function SelectAccountType() {
                   </li>
                 </ul>
                 <Button 
+                  type="button"
                   disabled={loading} 
                   className="w-full gradient-bg mt-4"
                   size="lg"
+                  onClick={() => handleSelect('team_leader')}
                 >
-                  {loading ? (
+                  {loading && selectedRole === 'team_leader' ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Setting up...
@@ -210,7 +233,3 @@ export default function SelectAccountType() {
   );
 }
 
-// Import cn utility
-function cn(...classes: any[]) {
-  return classes.filter(Boolean).join(' ');
-}

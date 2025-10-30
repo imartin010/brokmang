@@ -43,6 +43,17 @@ export default function AnalyzePage() {
     });
   }, []);
 
+  // Calculate rent per agent when total rent changes
+  useEffect(() => {
+    if (!usePerAgentRent && totalOfficeRent > 0) {
+      const totalPeople = inputs.agents + inputs.team_leaders;
+      if (totalPeople > 0) {
+        const rentPerAgent = totalOfficeRent / totalPeople;
+        setInputs(prev => ({ ...prev, rent: Math.round(rentPerAgent * 100) / 100 }));
+      }
+    }
+  }, [usePerAgentRent, totalOfficeRent, inputs.agents, inputs.team_leaders]);
+
   const checkUserAccess = async (userId: string) => {
     try {
       const { data } = await supabase
@@ -113,17 +124,6 @@ export default function AnalyzePage() {
       </div>
     );
   }
-
-  // Calculate rent per agent when total rent changes
-  useEffect(() => {
-    if (!usePerAgentRent && totalOfficeRent > 0) {
-      const totalPeople = inputs.agents + inputs.team_leaders;
-      if (totalPeople > 0) {
-        const rentPerAgent = totalOfficeRent / totalPeople;
-        setInputs(prev => ({ ...prev, rent: Math.round(rentPerAgent * 100) / 100 }));
-      }
-    }
-  }, [usePerAgentRent, totalOfficeRent, inputs.agents, inputs.team_leaders]);
 
   const handleInputChange = (field: keyof Inputs, value: string) => {
     // Special handling for gross_rate: accept percentage (e.g., "4%" or "4")

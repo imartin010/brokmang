@@ -49,16 +49,21 @@ export const useBrokmangStore = create<BrokmangStore>()(
 export const useAuth = () => useBrokmangStore((state) => ({
   user: state.user,
   loading: state.loading,
+  userAccountType: state.userAccountType,
   currentOrgId: state.currentOrgId,
   currentOrgSlug: state.currentOrgSlug,
   userRole: state.userRole,
   setUser: state.setUser,
   setLoading: state.setLoading,
+  setUserAccountType: state.setUserAccountType,
   setCurrentOrg: state.setCurrentOrg,
   clearCurrentOrg: state.clearCurrentOrg,
   signOut: state.signOut,
   isAuthenticated: state.isAuthenticated,
   hasOrgContext: state.hasOrgContext,
+  isCEO: state.isCEO,
+  isTeamLeader: state.isTeamLeader,
+  hasFinancialAccess: state.hasFinancialAccess,
 }));
 
 export const useOrg = () => useBrokmangStore((state) => ({
