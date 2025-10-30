@@ -1,3 +1,4 @@
+/// <reference lib="deno.ns" />
 // =====================================================
 // Edge Function: Calculate Agent Monthly Scores
 // =====================================================
@@ -243,6 +244,7 @@ serve(async (req: Request) => {
     }
 
     // Create Supabase client with service role (bypasses RLS)
+    // Read from Edge Function secrets (set via: supabase secrets set SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=...)
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
