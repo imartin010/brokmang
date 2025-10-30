@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { validateApiToken } from "@/lib/api-token";
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest) {
   const auth = await validateApiToken(request as unknown as Request);
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
-  const userId = params.id;
+  const { pathname } = new URL(request.url);
+  const segments = pathname.split("/").filter(Boolean);
+  // .../api/public/agents/{id}/performance
+  const agentsIndex = segments.findIndex((s) => s === "agents");
+  const userId = agentsIndex >= 0 ? segments[agentsIndex + 1] : undefined;
   if (!userId) return NextResponse.json({ error: "Missing agent id" }, { status: 400 });
 
   const sb = createClient(
@@ -14,7 +18,6 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // Example KPI aggregation placeholder
   const { data: logs, error } = await sb
     .from("agent_daily_logs")
     .select("deals, revenue")
