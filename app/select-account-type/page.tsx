@@ -8,13 +8,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { UserTypeSelector } from "@/components/user-type-selector";
-import { createBrowserClient } from "@/lib/supabase-browser";
+import { supabase } from "@/lib/supabase-browser";
 import type { UserAccountType } from "@/lib/types";
 
 export default function SelectAccountTypePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const supabase = createBrowserClient();
 
   useEffect(() => {
     checkExistingType();

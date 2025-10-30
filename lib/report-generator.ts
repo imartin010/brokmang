@@ -3,7 +3,7 @@
  * Helper functions for generating and downloading reports
  */
 
-import { createBrowserClient } from "./supabase-browser";
+import { supabase } from "./supabase-browser";
 
 export type ReportType = "sales" | "kpi" | "financial" | "monthly";
 
@@ -29,8 +29,6 @@ export interface GenerateReportResponse {
 export async function generateReport(
   params: GenerateReportParams
 ): Promise<GenerateReportResponse> {
-  const supabase = createBrowserClient();
-
   const { data, error } = await supabase.functions.invoke("generate_report", {
     body: {
       org_id: params.orgId,

@@ -28,7 +28,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/zustand/store";
 import { cn } from "@/lib/utils";
-import { createBrowserClient } from "@/lib/supabase-browser";
 import { SubscriptionPaymentModal } from "@/components/subscription-payment-modal";
 
 interface Insight {
@@ -231,7 +230,13 @@ export default function InsightsPage() {
                   <Button
                     size="lg"
                     className="w-full gradient-bg text-lg py-6"
-                    onClick={() => setShowPaymentModal(true)}
+                    onClick={() => {
+                      if (!user?.id || !userAccountType) {
+                        alert("Please wait for your account to load, then try again.");
+                        return;
+                      }
+                      setShowPaymentModal(true);
+                    }}
                   >
                     Subscribe Now - {amount} EGP/month
                   </Button>
