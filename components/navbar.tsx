@@ -103,10 +103,11 @@ export function Navbar() {
     { href: "/insights", label: "AI Insights", icon: Lightbulb },
   ];
 
-  // Combine links based on user type
+  // Combine links based on user type (with safety check)
+  const showFinancialLinks = typeof hasFinancialAccess === 'function' ? hasFinancialAccess() : false;
   const links = [
     ...baseLinks,
-    ...(hasFinancialAccess() ? financialLinks : []),
+    ...(showFinancialLinks ? financialLinks : []),
     ...commonLinks,
   ];
 
