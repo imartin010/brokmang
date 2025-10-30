@@ -66,18 +66,34 @@ export default function InsightsPage() {
   useEffect(() => {
     if (user?.id) {
       checkSubscription();
+    } else {
+      setCheckingSubscription(false);
     }
   }, [user]);
   
   const checkSubscription = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setCheckingSubscription(false);
+      return;
+    }
     
     try {
       const response = await fetch(`/api/subscription/status?user_id=${user.id}`);
+      
+      if (!response.ok) {
+        console.error("Subscription check failed:", response.status);
+        // If table doesn't exist or error, assume no subscription
+        setSubscriptionStatus({ has_subscription: false, pending_payment: false });
+        setCheckingSubscription(false);
+        return;
+      }
+      
       const data = await response.json();
       setSubscriptionStatus(data);
     } catch (error) {
       console.error("Error checking subscription:", error);
+      // On error, assume no subscription (show paywall)
+      setSubscriptionStatus({ has_subscription: false, pending_payment: false });
     } finally {
       setCheckingSubscription(false);
     }

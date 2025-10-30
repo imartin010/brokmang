@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Get active subscription
-    const { data: subscription } = await supabase
+    const { data: subscription, error: subError } = await supabase
       .from("subscriptions")
       .select("*")
       .eq("user_id", user_id)
@@ -32,7 +32,16 @@ export async function GET(req: NextRequest) {
       .gt("end_date", new Date().toISOString())
       .order("end_date", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
+    
+    // If table doesn't exist, return no subscription
+    if (subError && subError.code === 'PGRST116') {
+      return NextResponse.json({
+        has_subscription: false,
+        pending_payment: false,
+        info: "Subscription system not yet initialized"
+      });
+    }
 
     if (subscription) {
       const daysRemaining = Math.ceil(
@@ -61,7 +70,7 @@ export async function GET(req: NextRequest) {
       .eq("status", "pending_payment")
       .order("created_at", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (pending) {
       return NextResponse.json({
