@@ -63,8 +63,8 @@ BEGIN
   -- Get organization name
   SELECT name INTO v_org_name FROM organizations WHERE id = NEW.org_id;
   
-  -- Get agent name
-  v_agent_name := COALESCE(NEW.name, 'New Agent');
+  -- Get agent name (use full_name column)
+  v_agent_name := COALESCE(NEW.full_name, 'New Agent');
   
   -- Notify org owners and admins
   PERFORM create_notification(

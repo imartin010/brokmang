@@ -8,6 +8,9 @@ import {
   Users,
   PieChart as PieChartIcon,
   RefreshCw,
+  BarChart3,
+  Target,
+  Calendar,
 } from "lucide-react";
 import { KPICard } from "@/components/kpi-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,12 +21,17 @@ import { Results, Inputs } from "@/lib/types";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase-browser";
+import { useAuth } from "@/lib/zustand/store";
+import type { UserAccountType } from "@/lib/types";
 
 export default function Dashboard() {
   const [results, setResults] = useState<Results | null>(null);
   const [inputs, setInputs] = useState<Inputs>(DEFAULT_INPUTS);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const { userAccountType, setUserAccountType, hasFinancialAccess } = useAuth();
+  const [checkingAccess, setCheckingAccess] = useState(true);
+  const [localUserType, setLocalUserType] = useState<UserAccountType | null>(null);
 
   useEffect(() => {
     loadLatestScenario();
@@ -38,6 +46,34 @@ export default function Dashboard() {
       setUser(currentUser);
 
       if (!currentUser) {
+        setLoading(false);
+        setCheckingAccess(false);
+        return;
+      }
+
+      // Always fetch fresh user type from database (don't trust Zustand cache)
+      const { data: agentData } = await supabase
+        .from("sales_agents")
+        .select("user_type")
+        .eq("user_id", currentUser.id)
+        .single();
+
+      const freshUserType = agentData?.user_type as UserAccountType | null;
+      console.log('🔍 Dashboard: Fetched user_type from DB:', freshUserType);
+      console.log('🔍 Dashboard: Full agent data:', agentData);
+      
+      setLocalUserType(freshUserType);
+      
+      // Update Zustand with fresh data
+      if (freshUserType) {
+        setUserAccountType(freshUserType);
+        console.log('✅ Dashboard: Updated Zustand with:', freshUserType);
+      }
+
+      setCheckingAccess(false);
+
+      // If Team Leader, don't load financial data
+      if (freshUserType === 'team_leader') {
         setLoading(false);
         return;
       }
@@ -69,7 +105,7 @@ export default function Dashboard() {
     }
   };
 
-  if (loading) {
+  if (loading || checkingAccess) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-center h-96">
@@ -82,6 +118,205 @@ export default function Dashboard() {
     );
   }
 
+  // Unified Dashboard - Show team management for both, financials for CEO only
+  // Use localUserType (fresh from DB) instead of Zustand cache
+  const showFinancialAccess = typeof hasFinancialAccess === 'function' ? hasFinancialAccess() : true;
+  const isCEO = localUserType === "ceo";
+  const isTeamLeader = localUserType === "team_leader";
+  
+  console.log('🎯 Dashboard Render Decision:', {
+    localUserType,
+    isCEO,
+    isTeamLeader,
+    zustandUserType: userAccountType,
+    hasResults: !!results,
+  });
+
+  // If no saved financial scenario OR user is Team Leader, show team management dashboard
+  if (!results || isTeamLeader) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8"
+        >
+          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-[#257CFF] to-[#F45A2A] bg-clip-text text-transparent">
+            {isCEO ? "Management Dashboard" : "Team Dashboard"}
+          </h1>
+          <p className="text-muted-foreground">
+            {isCEO ? "Manage your team and track performance" : "Your team performance and metrics"}
+          </p>
+        </motion.div>
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Link href="/crm/sales">
+            <Card className="glass hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 rounded-full bg-blue-500/10">
+                    <Users className="h-6 w-6 text-blue-500" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-1">Team Members</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Manage your agents
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/crm/logs">
+            <Card className="glass hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 rounded-full bg-green-500/10">
+                    <Calendar className="h-6 w-6 text-green-500" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-1">Daily Logs</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Track daily activities
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/reports">
+            <Card className="glass hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 rounded-full bg-purple-500/10">
+                    <BarChart3 className="h-6 w-6 text-purple-500" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-1">Reports</h3>
+                    <p className="text-sm text-muted-foreground">
+                      View performance reports
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/insights">
+            <Card className="glass hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 rounded-full bg-orange-500/10">
+                    <Target className="h-6 w-6 text-orange-500" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold mb-1">AI Insights</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Smart recommendations
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
+
+        {/* Financial Tools - CEO Only */}
+        {isCEO && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+              <DollarSign className="h-6 w-6 text-primary" />
+              Financial Tools
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              <Link href="/analyze">
+                <Card className="glass hover:shadow-lg transition-shadow cursor-pointer h-full border-2 border-primary/20">
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 rounded-full bg-primary/10">
+                        <PieChartIcon className="h-6 w-6 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold mb-1">Break-Even Analysis</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Calculate costs and break-even point
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+
+              <Link href="/history">
+                <Card className="glass hover:shadow-lg transition-shadow cursor-pointer h-full border-2 border-primary/20">
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-4">
+                      <div className="p-3 rounded-full bg-primary/10">
+                        <TrendingUp className="h-6 w-6 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold mb-1">Analysis History</h3>
+                        <p className="text-sm text-muted-foreground">
+                          View saved financial scenarios
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Welcome Message */}
+        <Card className="glass">
+          <CardContent className="p-8">
+            <div className="flex items-start gap-6">
+              <div className="p-4 rounded-full bg-primary/10">
+                {isCEO ? <TrendingUp className="h-10 w-10 text-primary" /> : <Users className="h-10 w-10 text-primary" />}
+              </div>
+              <div className="flex-1">
+                <h2 className="text-2xl font-bold mb-3">
+                  {isCEO ? "Welcome to Your Management Hub" : "Welcome to Your Team Dashboard"}
+                </h2>
+                <p className="text-muted-foreground mb-4">
+                  {isCEO 
+                    ? "As a CEO, you have full access to team management, sales performance tracking, and financial analysis tools. Use the cards above to navigate to different areas of your business."
+                    : "As a Team Leader, you can manage your team, track performance, view reports, and get AI-powered insights to improve your sales strategy."
+                  }
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <Link href="/crm/sales">
+                    <Button className="gradient-bg">
+                      <Users className="mr-2 h-4 w-4" />
+                      View Team
+                    </Button>
+                  </Link>
+                  {isCEO && (
+                    <Link href="/analyze">
+                      <Button variant="outline">
+                        <PieChartIcon className="mr-2 h-4 w-4" />
+                        Financial Analysis
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // CEO Dashboard (Financial Tools)
   if (!results) {
     return (
       <div className="container mx-auto px-4 py-8">

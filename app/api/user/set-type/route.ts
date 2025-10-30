@@ -54,18 +54,25 @@ export async function POST(req: NextRequest) {
       error = result.error;
     } else {
       // Create new record for new user
-      // Get user email for default name
-      const { data: authUser } = await supabase.auth.admin.getUserById(user_id);
-      const defaultName = authUser?.user?.email?.split('@')[0] || "User";
+      // Get user's email to create a default name
+      let defaultName = "New User";
+      try {
+        const { data: authUser } = await supabase.auth.admin.getUserById(user_id);
+        if (authUser?.user?.email) {
+          defaultName = authUser.user.email.split('@')[0];
+        }
+      } catch (e) {
+        console.error("Could not fetch user email:", e);
+      }
       
       const result = await supabase
         .from("sales_agents")
         .insert({
           user_id,
-          user_type,
-          full_name: defaultName,
-          role: user_type === 'ceo' ? 'team_leader' : 'agent', // Default role
-          is_active: true,
+          full_name: defaultName, // Required field
+          role: 'agent', // Default role
+          is_active: true, // Required field
+          user_type: user_type as any, // Cast to handle enum type
         })
         .select()
         .single();
