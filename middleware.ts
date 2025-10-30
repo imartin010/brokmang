@@ -1,67 +1,43 @@
 /**
- * Middleware - Clean Rebuild
- * Simple route protection
+ * Middleware - Simple Route Protection
+ * Protects dashboard, allows public paths and auth flow
  */
 
-import { NextResponse, type NextRequest } from 'next/server';
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { NextResponse, NextRequest } from 'next/server';
 
-export async function middleware(req: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: req.headers,
-    },
-  });
+const PUBLIC_PATHS = new Set<string>([
+  '/',
+  '/auth/signin',
+  '/auth/signup',
+  '/auth/callback',
+  '/select-role',
+  '/favicon.ico',
+]);
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return req.cookies.get(name)?.value;
-        },
-        set(name: string, value: string, options: CookieOptions) {
-          req.cookies.set({ name, value, ...options });
-          response = NextResponse.next({ request: { headers: req.headers } });
-          response.cookies.set({ name, value, ...options });
-        },
-        remove(name: string, options: CookieOptions) {
-          req.cookies.set({ name, value: '', ...options });
-          response = NextResponse.next({ request: { headers: req.headers } });
-          response.cookies.set({ name, value: '', ...options });
-        },
-      },
-    }
-  );
+export function middleware(req: NextRequest) {
+  const url = new URL(req.url);
+  const path = url.pathname;
 
-  // Get user session
-  const { data: { session } } = await supabase.auth.getSession();
-  const pathname = req.nextUrl.pathname;
-
-  // Define route types
-  const publicRoutes = ['/', '/auth', '/auth/callback'];
-  const protectedRoutes = ['/dashboard', '/select-account-type', '/analyze', '/history', '/crm', '/reports', '/insights'];
-
-  const isPublic = publicRoutes.includes(pathname);
-  const isProtected = protectedRoutes.some(route => pathname.startsWith(route));
-  const isAuthPage = pathname.startsWith('/auth');
-
-  // If trying to access protected route without session → redirect to auth
-  if (isProtected && !session) {
-    return NextResponse.redirect(new URL('/auth', req.url));
+  // Allow public paths and Next.js internals
+  if (PUBLIC_PATHS.has(path) || path.startsWith('/_next') || path.startsWith('/api')) {
+    return NextResponse.next();
   }
 
-  // If logged in and trying to access auth page → redirect to dashboard
-  if (session && isAuthPage && pathname !== '/auth/callback') {
-    return NextResponse.redirect(new URL('/dashboard', req.url));
+  // Check for Supabase auth cookie (various formats)
+  const authCookie = 
+    req.cookies.get('sb-access-token') ?? 
+    req.cookies.get('sb:token') ??
+    req.cookies.get('sb-eamywkblubazqmepaxmm-auth-token');
+
+  if (!authCookie) {
+    const res = NextResponse.redirect(new URL('/auth/signin', req.url));
+    res.headers.set('Cache-Control', 'no-store');
+    return res;
   }
 
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+  matcher: ['/((?!api|_next/static|_next/image|assets|favicon.ico).*)'],
 };

@@ -1,73 +1,41 @@
 /**
- * Select Role Page (After Signup)
- * User chooses CEO or Team Leader
+ * Select Role Page
+ * User chooses CEO or Team Leader (after signup)
+ * Uses Server Action with proper validation
  */
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
+import { setUserRole } from './actions';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Briefcase, Users, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { supabase } from '@/lib/supabase-browser';
 import { cn } from '@/lib/utils';
 
-type UserType = 'ceo' | 'team_leader';
-
 export default function SelectRolePage() {
+  const [pending, startTransition] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+  const [selectedRole, setSelectedRole] = useState<'ceo' | 'team_leader' | null>(null);
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<UserType | null>(null);
 
-  const handleSelect = async (type: UserType) => {
-    setLoading(true);
-    setSelectedRole(type);
-
-    try {
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        throw new Error('Not authenticated. Please sign in first.');
+  function submitRole(role: 'ceo' | 'team_leader') {
+    const fd = new FormData();
+    fd.set('user_type', role);
+    setSelectedRole(role);
+    setErr(null);
+    
+    startTransition(async () => {
+      const res = await setUserRole(fd);
+      if (!res.ok) {
+        setErr(res.error ?? 'Failed to save role');
+        setSelectedRole(null);
+      } else {
+        router.replace('/dashboard');
       }
-
-      console.log('Saving user type:', type, 'for user:', user.id);
-
-      // Insert or update user type
-      const { data, error } = await supabase
-        .from('sales_agents')
-        .upsert({
-          user_id: user.id,
-          user_type: type,
-          full_name: user.email?.split('@')[0] || 'User',
-          is_active: true,
-        }, {
-          onConflict: 'user_id',
-          returning: 'minimal'
-        });
-
-      if (error) {
-        console.error('Database error:', error);
-        throw new Error(error.message || 'Failed to save role');
-      }
-
-      console.log('Role saved successfully');
-
-      // Success - redirect to dashboard
-      setTimeout(() => {
-        router.push('/dashboard');
-        router.refresh();
-      }, 500);
-
-    } catch (error: any) {
-      console.error('Error selecting role:', error);
-      alert(`Error: ${error.message || 'Could not save role. Please try again.'}`);
-      setLoading(false);
-      setSelectedRole(null);
-    }
-  };
+    });
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-accent/20 p-4">
@@ -79,12 +47,24 @@ export default function SelectRolePage() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-4xl md:text-5xl font-bold mb-3 bg-gradient-to-r from-[#257CFF] to-[#F45A2A] bg-clip-text text-transparent">
-            Choose Your Role
+            Select Your Role
           </h1>
           <p className="text-muted-foreground text-lg">
-            Select the role that best describes your position
+            Choose the role that best describes your position
           </p>
         </div>
+
+        {/* Error Message */}
+        {err && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 p-4 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-center"
+            role="alert"
+          >
+            {err}
+          </motion.div>
+        )}
 
         {/* Role Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -97,10 +77,13 @@ export default function SelectRolePage() {
             <Card 
               className={cn(
                 "glass cursor-pointer hover:shadow-xl transition-all h-full border-2",
-                loading ? "opacity-50 pointer-events-none" : "hover:scale-105 hover:border-primary/50",
-                selectedRole === 'ceo' && "border-primary"
+                pending ? "opacity-50 pointer-events-none" : "hover:scale-105 hover:border-primary/50",
+                selectedRole === 'ceo' && "border-primary ring-2 ring-primary/20"
               )}
-              onClick={() => !loading && handleSelect('ceo')}
+              onClick={() => !pending && submitRole('ceo')}
+              role="button"
+              tabIndex={0}
+              aria-busy={pending && selectedRole === 'ceo'}
             >
               <CardHeader>
                 <div className="flex justify-center mb-4">
@@ -138,22 +121,18 @@ export default function SelectRolePage() {
                     <span>Organization settings and configuration</span>
                   </li>
                 </ul>
-                <Button 
-                  type="button"
-                  disabled={loading} 
-                  className="w-full gradient-bg mt-4"
-                  size="lg"
-                  onClick={() => handleSelect('ceo')}
-                >
-                  {loading && selectedRole === 'ceo' ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Setting up...
-                    </>
+                <div className="pt-4">
+                  {pending && selectedRole === 'ceo' ? (
+                    <div className="flex items-center justify-center py-3">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" />
+                      <span className="text-sm text-muted-foreground">Saving...</span>
+                    </div>
                   ) : (
-                    'Select CEO'
+                    <div className="text-center text-sm text-primary font-medium">
+                      Click to select
+                    </div>
                   )}
-                </Button>
+                </div>
               </CardContent>
             </Card>
           </motion.div>
@@ -167,10 +146,13 @@ export default function SelectRolePage() {
             <Card 
               className={cn(
                 "glass cursor-pointer hover:shadow-xl transition-all h-full border-2",
-                loading ? "opacity-50 pointer-events-none" : "hover:scale-105 hover:border-primary/50",
-                selectedRole === 'team_leader' && "border-primary"
+                pending ? "opacity-50 pointer-events-none" : "hover:scale-105 hover:border-primary/50",
+                selectedRole === 'team_leader' && "border-primary ring-2 ring-primary/20"
               )}
-              onClick={() => !loading && handleSelect('team_leader')}
+              onClick={() => !pending && submitRole('team_leader')}
+              role="button"
+              tabIndex={0}
+              aria-busy={pending && selectedRole === 'team_leader'}
             >
               <CardHeader>
                 <div className="flex justify-center mb-4">
@@ -208,28 +190,35 @@ export default function SelectRolePage() {
                     <span>KPI monitoring and goal tracking</span>
                   </li>
                 </ul>
-                <Button 
-                  type="button"
-                  disabled={loading} 
-                  className="w-full gradient-bg mt-4"
-                  size="lg"
-                  onClick={() => handleSelect('team_leader')}
-                >
-                  {loading && selectedRole === 'team_leader' ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Setting up...
-                    </>
+                <div className="pt-4">
+                  {pending && selectedRole === 'team_leader' ? (
+                    <div className="flex items-center justify-center py-3">
+                      <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" />
+                      <span className="text-sm text-muted-foreground">Saving...</span>
+                    </div>
                   ) : (
-                    'Select Team Leader'
+                    <div className="text-center text-sm text-primary font-medium">
+                      Click to select
+                    </div>
                   )}
-                </Button>
+                </div>
               </CardContent>
             </Card>
           </motion.div>
         </div>
+
+        {/* Status Message */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="text-center mt-6"
+        >
+          <p className="text-sm text-muted-foreground">
+            {pending ? 'Saving your selection...' : 'Choose one to continue'}
+          </p>
+        </motion.div>
       </motion.div>
     </div>
   );
 }
-

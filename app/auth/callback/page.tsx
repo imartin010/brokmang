@@ -44,7 +44,7 @@ export default function AuthCallback() {
             if (!agent?.user_type) {
               // User hasn't selected type yet, redirect to selection page
               setMessage("Email confirmed! Setting up your account...");
-              setTimeout(() => router.push("/select-account-type"), 2000);
+              setTimeout(() => router.push("/select-role"), 2000);
               return;
             }
           }

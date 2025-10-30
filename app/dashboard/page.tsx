@@ -1,6 +1,6 @@
 /**
- * Dashboard Page - Clean Rebuild
- * Client-side auth check with role-based rendering
+ * Dashboard Page
+ * Role-based dashboard (CEO or Team Leader)
  */
 
 'use client';
@@ -12,53 +12,56 @@ import { Loader2 } from 'lucide-react';
 import CeoDashboard from '@/components/dashboard/CeoDashboard';
 import TeamLeaderDashboard from '@/components/dashboard/TeamLeaderDashboard';
 
-export default function DashboardPage() {
+export default function Dashboard() {
   const router = useRouter();
+  const [role, setRole] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userType, setUserType] = useState<string | null>(null);
-  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    checkAuth();
-  }, []);
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        
+        if (!user) {
+          setErr('Not signed in');
+          router.push('/auth/signin');
+          return;
+        }
 
-  const checkAuth = async () => {
-    try {
-      // Check session
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        router.push('/auth');
-        return;
-      }
+        const { data, error } = await supabase
+          .from('sales_agents')
+          .select('user_type')
+          .eq('user_id', user.id)
+          .maybeSingle();
 
-      setUser(session.user);
+        if (error) {
+          console.error('Error fetching role:', error);
+          setErr(error.message);
+          setLoading(false);
+          return;
+        }
 
-      // Check user type
-      const { data: agent } = await supabase
-        .from('sales_agents')
-        .select('user_type')
-        .eq('user_id', session.user.id)
-        .maybeSingle();
+        if (!data?.user_type) {
+          // No role selected, redirect to selection
+          router.push('/select-role');
+          return;
+        }
 
-      if (!agent?.user_type) {
-        // No role selected, redirect to selection
-        router.push('/select-account-type');
-        return;
-      }
-
-      setUserType(agent.user_type);
+        setRole(data.user_type);
         setLoading(false);
-    } catch (error) {
-      console.error('Auth check error:', error);
-      router.push('/auth');
-    }
-  };
+      } catch (error: any) {
+        console.error('Dashboard error:', error);
+        setErr(error.message);
+        setLoading(false);
+      }
+    })();
+  }, [router]);
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
+        <div className="text-center">
           <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
           <p className="text-muted-foreground">Loading your dashboard...</p>
         </div>
@@ -66,12 +69,30 @@ export default function DashboardPage() {
     );
   }
 
-  // Render appropriate dashboard based on role
-  const isCEO = userType === 'ceo' || userType === 'CEO';
+  if (err) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-600" role="alert">Error: {err}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!role) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Redirecting...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-accent/10">
-      {isCEO ? <CeoDashboard /> : <TeamLeaderDashboard />}
+      {role === 'ceo' ? <CeoDashboard /> : <TeamLeaderDashboard />}
     </div>
   );
 }
