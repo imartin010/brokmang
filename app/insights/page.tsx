@@ -20,12 +20,16 @@ import {
   Activity,
   CheckCircle,
   XCircle,
+  Lock,
+  Crown,
+  Users as UsersIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/zustand/store";
 import { cn } from "@/lib/utils";
 import { createBrowserClient } from "@/lib/supabase-browser";
+import { SubscriptionPaymentModal } from "@/components/subscription-payment-modal";
 
 interface Insight {
   type: string;
@@ -49,18 +53,42 @@ const iconMap: Record<string, any> = {
 };
 
 export default function InsightsPage() {
-  const { currentOrgId, user } = useAuth();
+  const { currentOrgId, user, userAccountType } = useAuth();
   const [loading, setLoading] = useState(false);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [lastGenerated, setLastGenerated] = useState<Date | null>(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<any>(null);
+  const [checkingSubscription, setCheckingSubscription] = useState(true);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   
-  // Auto-generate insights on mount if org is selected
+  // Check subscription status on mount
   useEffect(() => {
-    if (currentOrgId && insights.length === 0) {
+    if (user?.id) {
+      checkSubscription();
+    }
+  }, [user]);
+  
+  const checkSubscription = async () => {
+    if (!user?.id) return;
+    
+    try {
+      const response = await fetch(`/api/subscription/status?user_id=${user.id}`);
+      const data = await response.json();
+      setSubscriptionStatus(data);
+    } catch (error) {
+      console.error("Error checking subscription:", error);
+    } finally {
+      setCheckingSubscription(false);
+    }
+  };
+  
+  // Auto-generate insights on mount if org is selected AND has subscription
+  useEffect(() => {
+    if (currentOrgId && insights.length === 0 && subscriptionStatus?.has_subscription) {
       handleRefresh();
     }
-  }, [currentOrgId]);
+  }, [currentOrgId, subscriptionStatus]);
   
   const handleRefresh = async () => {
     if (!currentOrgId) {
@@ -105,6 +133,152 @@ export default function InsightsPage() {
     return 'text-yellow-600 dark:text-yellow-400';
   };
   
+  // Show loading while checking subscription
+  if (checkingSubscription) {
+    return (
+      <div className="container mx-auto px-4 py-8 min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Checking subscription status...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show paywall if no active subscription
+  if (!subscriptionStatus?.has_subscription && !subscriptionStatus?.pending_payment) {
+    const amount = userAccountType === "ceo" ? 100 : 50;
+    const planName = userAccountType === "ceo" ? "CEO Plan" : "Team Leader Plan";
+
+    return (
+      <>
+        <div className="container mx-auto px-4 py-8 min-h-screen flex items-center justify-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-2xl w-full"
+          >
+            <Card>
+              <CardContent className="p-8">
+                <div className="text-center">
+                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center mx-auto mb-6">
+                    <Lock className="h-10 w-10 text-white" />
+                  </div>
+                  <h2 className="text-3xl font-bold mb-3">AI Features Locked</h2>
+                  <p className="text-muted-foreground mb-6">
+                    Subscribe to unlock AI-powered Smart Insights with OpenAI GPT-4o-mini
+                  </p>
+
+                  {/* Pricing Card */}
+                  <div className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-lg p-6 mb-6 border-2 border-purple-200 dark:border-purple-800">
+                    <div className="flex items-center justify-center gap-2 mb-3">
+                      {userAccountType === "ceo" ? (
+                        <Crown className="h-6 w-6 text-purple-600" />
+                      ) : (
+                        <UsersIcon className="h-6 w-6 text-blue-600" />
+                      )}
+                      <h3 className="text-xl font-bold">{planName}</h3>
+                    </div>
+                    <div className="text-5xl font-bold mb-2">
+                      {amount} <span className="text-2xl">EGP</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">per month (31 days)</p>
+                  </div>
+
+                  {/* Features List */}
+                  <div className="text-left mb-6">
+                    <h4 className="font-semibold mb-3">✨ What You'll Get:</h4>
+                    <ul className="space-y-2">
+                      <li className="flex items-start gap-2">
+                        <Sparkles className="h-5 w-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                        <span>Real-time AI analysis of your performance data</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <TrendingUp className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                        <span>Actionable insights with confidence scores</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <span>Early warnings for performance drops</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <Trophy className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                        <span>Identify top performers automatically</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                        <span>Unlimited insight generations</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <Button
+                    size="lg"
+                    className="w-full gradient-bg text-lg py-6"
+                    onClick={() => setShowPaymentModal(true)}
+                  >
+                    Subscribe Now - {amount} EGP/month
+                  </Button>
+
+                  <p className="text-xs text-muted-foreground mt-4">
+                    Payment via InstaPay • Admin validation within 24 hours
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+
+        {/* Payment Modal */}
+        <SubscriptionPaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          userType={userAccountType as "ceo" | "team_leader"}
+          userId={user?.id || ""}
+          orgId={currentOrgId || undefined}
+          onSuccess={() => {
+            checkSubscription();
+          }}
+        />
+      </>
+    );
+  }
+
+  // Show pending payment status
+  if (subscriptionStatus?.pending_payment) {
+    return (
+      <div className="container mx-auto px-4 py-8 min-h-screen flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-md w-full"
+        >
+          <Card>
+            <CardContent className="p-8 text-center">
+              <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/20 flex items-center justify-center mx-auto mb-4">
+                <Loader2 className="h-8 w-8 text-amber-600 dark:text-amber-400 animate-spin" />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">Payment Pending</h2>
+              <p className="text-muted-foreground mb-6">
+                Your payment is being validated by our admin. This usually takes up to 24 hours.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                You'll receive a notification once your AI features are activated.
+              </p>
+              <Button
+                variant="outline"
+                className="mt-6"
+                onClick={() => window.location.href = "/dashboard"}
+              >
+                Go to Dashboard
+              </Button>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto py-8 px-4 max-w-7xl">
       <motion.div
