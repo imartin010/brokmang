@@ -43,6 +43,7 @@ interface UserProfile {
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<"all" | "admin" | "ceo" | "team_leader">("all");
   const [changingUser, setChangingUser] = useState<string | null>(null);
@@ -54,20 +55,22 @@ export default function AdminUsersPage() {
   const loadUsers = async () => {
     try {
       setLoading(true);
+      setError(null);
 
       // Use API route to fetch all users (bypasses RLS using service role)
       const response = await fetch(`/api/admin/users?filter=${filterType}`);
       
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to load users");
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to load users");
       }
 
       const { users } = await response.json();
       setUsers(users || []);
     } catch (error) {
-      console.error("Failed to load users:", error);
-      alert(`Error: ${error instanceof Error ? error.message : "Failed to load users"}`);
+      console.error("[Admin Users] Failed to load users:", error);
+      setError(error instanceof Error ? error.message : "Failed to load users");
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -109,7 +112,8 @@ export default function AdminUsersPage() {
       // Reload users to reflect the change
       await loadUsers();
     } catch (error: any) {
-      alert(`Error: ${error.message}`);
+      console.error("[Admin Users] Error changing user type:", error);
+      setError(error.message || "Failed to change user type");
     } finally {
       setChangingUser(null);
     }
@@ -151,6 +155,24 @@ export default function AdminUsersPage() {
           View and manage all users in the system
         </p>
       </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400">
+          <p className="font-medium">Error: {error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => {
+              setError(null);
+              loadUsers();
+            }}
+          >
+            Retry
+          </Button>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">

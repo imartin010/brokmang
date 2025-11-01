@@ -19,16 +19,28 @@ export default function DailyLogsPage() {
 
   const loadAgents = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error("[Daily Logs] User not authenticated");
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from("sales_agents")
         .select("*")
         .eq("is_active", true)
         .order("full_name");
 
-      if (error) throw error;
-      setAgents(data || []);
+      if (error) {
+        console.error("[Daily Logs] Error loading agents:", error);
+        setAgents([]);
+      } else {
+        setAgents(data || []);
+      }
     } catch (error) {
-      console.error("Error loading agents:", error);
+      console.error("[Daily Logs] Unexpected error:", error);
+      setAgents([]);
     } finally {
       setLoading(false);
     }
@@ -62,10 +74,10 @@ export default function DailyLogsPage() {
       // Show success animation
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
-    } catch (error) {
-      console.error("Error saving log:", error);
-      alert("Failed to save log. Please try again.");
-      throw error;
+    } catch (error: any) {
+      console.error("[Daily Logs] Error saving log:", error);
+      // Don't use alert - errors should be handled in UI
+      throw new Error(error.message || "Failed to save log. Please try again.");
     }
   };
 

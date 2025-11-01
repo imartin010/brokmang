@@ -131,7 +131,9 @@ export default function AdminSubscriptionsPage() {
       setSelectedSubscription(null);
       setAdminNotes("");
     } catch (error: any) {
-      alert(`Error: ${error.message}`);
+      console.error("[Admin Subscriptions] Error validating payment:", error);
+      // Error will be displayed via UI state if needed
+      throw error;
     } finally {
       setValidating(false);
     }

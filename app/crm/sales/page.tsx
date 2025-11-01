@@ -27,15 +27,28 @@ export default function SalesAgentsPage() {
 
   const loadAgents = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.error("[Sales Agents] User not authenticated");
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from("sales_agents")
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      setAgents(data || []);
+      if (error) {
+        console.error("[Sales Agents] Error loading agents:", error);
+        // Don't throw - just log and show empty state
+        setAgents([]);
+      } else {
+        setAgents(data || []);
+      }
     } catch (error) {
-      console.error("Error loading agents:", error);
+      console.error("[Sales Agents] Unexpected error:", error);
+      setAgents([]);
     } finally {
       setLoading(false);
     }
