@@ -597,7 +597,13 @@ export default function InsightsPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => window.location.href = insight.action_url}
+                              onClick={() => {
+                                // Filter out /org/* routes and replace with /admin/settings
+                                const url = insight.action_url?.startsWith('/org/') 
+                                  ? '/admin/settings' 
+                                  : insight.action_url || '/dashboard';
+                                window.location.href = url;
+                              }}
                             >
                               Take Action →
                             </Button>

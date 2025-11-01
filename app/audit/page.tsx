@@ -99,7 +99,7 @@ export default function AuditPage() {
           <div>
             <h1 className="text-4xl font-bold">Audit Logs</h1>
             <p className="text-muted-foreground">
-              Complete activity trail for your organization
+              Complete activity trail for your account
             </p>
           </div>
         </div>
@@ -213,7 +213,7 @@ export default function AuditPage() {
           </h4>
           <p className="text-sm text-blue-800 dark:text-blue-200">
             All audit logs are append-only and cannot be modified or deleted.
-            This ensures complete compliance and accountability for all organizational activities.
+            This ensures complete compliance and accountability for all account activities.
           </p>
         </CardContent>
       </Card>

@@ -16,7 +16,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 export function NotificationCenter() {
-  const { user, currentOrgId } = useAuth();
+  const { user } = useAuth();
   const {
     notifications,
     unreadCount,
@@ -30,22 +30,21 @@ export function NotificationCenter() {
   const [loading, setLoading] = useState(false);
   
   useEffect(() => {
-    if (user && currentOrgId) {
+    if (user) {
       loadNotifications();
       subscribeToNotifications();
     }
-  }, [user, currentOrgId]);
+  }, [user]);
   
   const loadNotifications = async () => {
-    if (!currentOrgId) return;
+    if (!user) return;
     
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('notifications')
         .select('*')
-        .eq('org_id', currentOrgId)
-        .or(`user_id.eq.${user?.id},user_id.is.null`)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(20);
       
@@ -60,7 +59,7 @@ export function NotificationCenter() {
   };
   
   const subscribeToNotifications = () => {
-    if (!user || !currentOrgId) return;
+    if (!user) return;
     
     const channel = supabase
       .channel('notifications')
@@ -70,12 +69,12 @@ export function NotificationCenter() {
           event: 'INSERT',
           schema: 'public',
           table: 'notifications',
-          filter: `org_id=eq.${currentOrgId}`,
+          filter: `user_id=eq.${user.id}`,
         },
         (payload) => {
           const newNotification = payload.new as any;
-          // Only add if it's for this user or org-wide
-          if (!newNotification.user_id || newNotification.user_id === user.id) {
+          // Only add if it's for this user
+          if (newNotification.user_id === user.id) {
             addNotification(newNotification);
           }
         }
@@ -210,11 +209,11 @@ export function NotificationCenter() {
               
               {/* Notifications List */}
               <div className="flex-1 overflow-y-auto">
-                {!currentOrgId ? (
+                {!user ? (
                   <div className="flex flex-col items-center justify-center py-12 px-4">
                     <Bell className="h-12 w-12 text-muted-foreground mb-3 opacity-50" />
                     <p className="text-muted-foreground text-center text-sm">
-                      Select an organization to view notifications
+                      Please sign in to view notifications
                     </p>
                   </div>
                 ) : loading ? (

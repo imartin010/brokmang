@@ -294,7 +294,7 @@ export default function ReportsPage() {
             ✨ Professional Reports Now Live!
           </h4>
           <p className="text-sm text-green-800 dark:text-green-200">
-            Generate beautiful, branded HTML reports with one click. Reports include your organization's logo, colors, and comprehensive data visualizations. 
+            Generate beautiful, branded HTML reports with one click. Reports include comprehensive data visualizations. 
             {" "}
             <span className="font-medium">Tip:</span> Use your browser's print function (Ctrl/Cmd+P) to save as PDF.
           </p>

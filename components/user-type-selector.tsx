@@ -34,7 +34,7 @@ export function UserTypeSelector({ onSelect, loading = false }: UserTypeSelector
         "Financial Reports & Planning",
         "Sales Performance & KPIs",
         "AI Smart Insights",
-        "Full Organization Settings",
+        "Admin Settings",
         "Team Management",
       ],
     },

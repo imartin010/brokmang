@@ -204,7 +204,7 @@ Analyze this data and provide 3-5 key insights. For each insight, include:
 3. Confidence level (0-100) based on data quality and strength of the pattern
 4. 2-4 specific reasons/evidence supporting this insight
 5. Type of insight (choose one: "performance_drop", "performance_improvement", "break_even_warning", "target_exceeded", "top_performer", "underperformer", "trend_alert", or "recommendation")
-6. Suggested action URL (choose from: "/dashboard", "/analyze", "/reports", "/org/settings")
+6. Suggested action URL (choose from: "/dashboard", "/analyze", "/reports", "/admin/settings")
 
 **Guidelines:**
 - Focus on actionable insights, not just observations
@@ -324,7 +324,7 @@ function prepareDataSummary(data: InsightData): string {
   const bottomPerformers = sortedCurrent.slice(-3).reverse();
 
   return `
-**Organization Overview:**
+**Company Overview:**
 - Active Agents: ${agents.length}
 - Current Month Avg Score: ${avgCurrentScore.toFixed(1)}%
 - Previous Month Avg Score: ${avgPreviousScore.toFixed(1)}%
