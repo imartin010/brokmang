@@ -13,7 +13,7 @@ const supabase = createClient(
 
 export async function POST(req: NextRequest) {
   try {
-    const { user_id, org_id, user_type, payment_reference, payment_screenshot_url } = await req.json();
+    const { user_id, user_type, payment_reference, payment_screenshot_url } = await req.json();
 
     if (!user_id || !user_type) {
       return NextResponse.json(
@@ -61,7 +61,6 @@ export async function POST(req: NextRequest) {
       .from("subscriptions")
       .insert({
         user_id,
-        org_id,
         user_type,
         amount_egp,
         status: "pending_payment",
@@ -93,36 +92,35 @@ export async function POST(req: NextRequest) {
 
     // Create notification for user
     await supabase.from("notifications").insert({
-      org_id,
       user_id,
-      type: "subscription_payment_submitted",
+      type: "SYSTEM",
       title: "💳 Payment Submitted",
       message: `Your AI subscription payment of ${amount_egp} EGP has been submitted. Awaiting admin validation.`,
       action_url: "/subscription",
-      metadata: {
+      payload: {
         subscription_id: subscription.id,
         amount: amount_egp,
+        notification_subtype: "subscription_payment_submitted",
       },
     });
 
-    // Create notification for admins
+    // Create notification for all CEOs and Admins
     const { data: admins } = await supabase
-      .from("memberships")
+      .from("user_profiles")
       .select("user_id")
-      .eq("role", "owner")
-      .or("role.eq.admin");
+      .in("user_type", ["ceo", "admin"]);
 
     if (admins && admins.length > 0) {
       const adminNotifications = admins.map((admin) => ({
-        org_id,
         user_id: admin.user_id,
-        type: "subscription_pending_validation",
+        type: "SYSTEM",
         title: "🔔 New Payment to Validate",
         message: `A user submitted payment for AI subscription (${amount_egp} EGP). Please validate in admin panel.`,
         action_url: "/admin/subscriptions",
-        metadata: {
+        payload: {
           subscription_id: subscription.id,
           amount: amount_egp,
+          notification_subtype: "subscription_pending_validation",
         },
       }));
 

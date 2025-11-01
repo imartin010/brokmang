@@ -19,23 +19,60 @@ export default function HistoryPage() {
   const [user, setUser] = useState<any>(null);
   const [checkingAccess, setCheckingAccess] = useState(true);
 
+  const loadRecords = async () => {
+    try {
+      setLoading(true);
+      if (!user) return;
+      
+      // Get user's org_id if available
+      const { data: membership } = await supabase
+        .from("memberships")
+        .select("org_id")
+        .eq("user_id", user.id)
+        .limit(1)
+        .maybeSingle();
+      
+      // Load records with org_id filter if available, otherwise filter by user_id
+      let query = supabase
+        .from("break_even_records")
+        .select("*");
+      
+      if (membership?.org_id) {
+        query = query.eq("org_id", membership.org_id);
+      } else {
+        query = query.eq("user_id", user.id);
+      }
+      
+      const { data, error } = await query
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setRecords(data || []);
+    } catch (error) {
+      console.error("Error loading records:", error);
+      alert("Failed to load history");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     const checkUser = async () => {
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) {
-        router.push("/auth");
+        router.push("/auth/signin");
         return;
       }
       setUser(user);
       
       // Check user account type
       const { data } = await supabase
-        .from("sales_agents")
+        .from("user_profiles")
         .select("user_type")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
         
       setCheckingAccess(false);
       
@@ -98,24 +135,6 @@ export default function HistoryPage() {
       </div>
     );
   }
-
-  const loadRecords = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("break_even_records")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-      setRecords(data || []);
-    } catch (error) {
-      console.error("Error loading records:", error);
-      alert("Failed to load history");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this scenario?")) return;

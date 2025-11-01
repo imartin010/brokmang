@@ -61,10 +61,10 @@ export default function Navbar() {
   const fetchUserType = async (userId: string) => {
     try {
       const { data } = await supabase
-        .from('sales_agents')
+        .from('user_profiles')
         .select('user_type')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
       if (data?.user_type) {
         // Map database format to display format
@@ -168,7 +168,7 @@ export default function Navbar() {
                 </Button>
               </>
             ) : (
-              <Link href="/auth">
+              <Link href="/auth/signin">
                 <Button className="gradient-bg">
                   Sign In
                 </Button>

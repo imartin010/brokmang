@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { FileText, Download, Calendar, Filter, TrendingUp, DollarSign, Users, FileBarChart, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,8 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/zustand/store";
-import { hasPermission } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase-browser";
 import {
   generateReport,
   downloadReport,
@@ -27,11 +27,34 @@ import {
 } from "@/lib/report-generator";
 
 export default function ReportsPage() {
-  const { currentOrgId, userRole } = useAuth();
+  const { user, setUser, userAccountType, setUserAccountType } = useAuth();
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [generatingReport, setGeneratingReport] = useState<string | null>(null);
   const [lastGenerated, setLastGenerated] = useState<{ [key: string]: string }>({});
   const [error, setError] = useState<string | null>(null);
+  
+  // Initialize user from Supabase
+  useEffect(() => {
+    const initUser = async () => {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser) {
+        setUser(currentUser);
+        
+        // Fetch user account type
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('user_type')
+          .eq('user_id', currentUser.id)
+          .maybeSingle();
+        
+        if (data?.user_type) {
+          setUserAccountType(data.user_type as 'ceo' | 'team_leader' | 'admin');
+        }
+      }
+    };
+    
+    initUser();
+  }, [setUser, setUserAccountType]);
   
   const reportTemplates: Array<{
     id: ReportType;
@@ -70,11 +93,12 @@ export default function ReportsPage() {
     },
   ];
   
-  const canGenerate = userRole && hasPermission(userRole, 'reports:generate');
+  // Allow all authenticated users to generate reports (no org restrictions)
+  const canGenerate = true;
   
   const handleGenerateReport = async (reportType: ReportType) => {
-    if (!currentOrgId) {
-      setError("Please select an organization first");
+    if (!user?.id) {
+      setError("Please sign in first");
       return;
     }
 
@@ -87,7 +111,6 @@ export default function ReportsPage() {
 
       // Validate parameters
       const validation = validateReportParams({
-        orgId: currentOrgId,
         reportType,
         year,
         month,
@@ -98,16 +121,22 @@ export default function ReportsPage() {
       }
 
       // Generate the report
+      console.log('Generating report with params:', { reportType, year, month });
       const result = await generateReport({
-        orgId: currentOrgId,
         reportType,
         year,
         month,
         title: `${getReportDisplayName(reportType)} - ${formatReportPeriod(year, month)}`,
       });
 
+      console.log('Report generated:', result);
+
       // Download the report
-      downloadReport(result.download_url);
+      if (result?.download_url) {
+        downloadReport(result.download_url);
+      } else {
+        throw new Error('No download URL returned from report generation');
+      }
 
       // Update last generated timestamp
       setLastGenerated((prev) => ({
@@ -160,11 +189,6 @@ export default function ReportsPage() {
               className="w-auto"
               max={new Date().toISOString().slice(0, 7)}
             />
-            {!currentOrgId && (
-              <p className="text-sm text-amber-600 dark:text-amber-400">
-                ⚠️ Please select an organization to generate reports
-              </p>
-            )}
           </div>
           {error && (
             <motion.div
@@ -211,7 +235,7 @@ export default function ReportsPage() {
                     <Button
                       className="w-full gradient-bg"
                       onClick={() => handleGenerateReport(template.id)}
-                      disabled={!canGenerate || !currentOrgId || isGenerating}
+                      disabled={!canGenerate || !user?.id || isGenerating}
                     >
                       {isGenerating ? (
                         <>

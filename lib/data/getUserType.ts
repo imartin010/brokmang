@@ -21,21 +21,21 @@ export async function getUserTypeServer(): Promise<UserTypeData> {
     return { userId: '', email: null, userType: null };
   }
 
-  const { data: agent, error } = await supabase
-    .from('sales_agents')
+  const { data: profile, error } = await supabase
+    .from('user_profiles')
     .select('user_id, user_type')
     .eq('user_id', user.id)
-    .single();
+    .maybeSingle();
 
   if (error) {
     return { userId: user.id, email: user.email ?? null, userType: null };
   }
 
   // Map database values to TypeScript types
-  // Database may have 'ceo'/'team_leader' or 'CEO'/'TeamLeader'
+  // Database has 'ceo' or 'team_leader'
   let mappedUserType: UserType | null = null;
-  if (agent?.user_type) {
-    const rawType = agent.user_type.toLowerCase();
+  if (profile?.user_type) {
+    const rawType = profile.user_type.toLowerCase();
     if (rawType === 'ceo') mappedUserType = 'CEO';
     else if (rawType === 'team_leader' || rawType === 'teamleader') mappedUserType = 'TeamLeader';
   }

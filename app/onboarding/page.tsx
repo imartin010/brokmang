@@ -59,19 +59,19 @@ export default function OnboardingPage() {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       
       if (!currentUser) {
-        router.push('/auth');
+        router.push('/auth/signin');
         return;
       }
       
-      // Check if user has already completed onboarding
-      const { data: membership } = await supabase
-        .from('memberships')
-        .select('org_id, role')
-        .eq('user_id', currentUser.id)
-        .single();
+      // Check if user has already completed onboarding (skip - no org check needed)
+      // Just check if they have any agents created
+      const { data: agents } = await supabase
+        .from('sales_agents')
+        .select('id')
+        .limit(1);
       
-      if (membership) {
-        // User already has an org, redirect to dashboard
+      if (agents && agents.length > 0) {
+        // User already has agents, redirect to dashboard
         router.push('/dashboard');
         return;
       }

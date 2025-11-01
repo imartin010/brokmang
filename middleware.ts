@@ -1,6 +1,6 @@
 /**
  * Middleware - Simple Route Protection
- * Protects dashboard, allows public paths and auth flow
+ * Allows public paths, lets pages handle their own auth checks
  */
 
 import { NextResponse, NextRequest } from 'next/server';
@@ -23,18 +23,8 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for Supabase auth cookie (various formats)
-  const authCookie = 
-    req.cookies.get('sb-access-token') ?? 
-    req.cookies.get('sb:token') ??
-    req.cookies.get('sb-eamywkblubazqmepaxmm-auth-token');
-
-  if (!authCookie) {
-    const res = NextResponse.redirect(new URL('/auth/signin', req.url));
-    res.headers.set('Cache-Control', 'no-store');
-    return res;
-  }
-
+  // For protected paths, let the pages handle auth checks client-side
+  // This prevents middleware from blocking valid sessions due to cookie name mismatches
   return NextResponse.next();
 }
 

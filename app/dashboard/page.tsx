@@ -30,7 +30,7 @@ export default function Dashboard() {
         }
 
         const { data, error } = await supabase
-          .from('sales_agents')
+          .from('user_profiles')
           .select('user_type')
           .eq('user_id', user.id)
           .maybeSingle();

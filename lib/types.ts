@@ -41,7 +41,7 @@ export type BreakEvenRecord = {
 // CRM / Sales Performance Types
 // =====================================================
 
-export type UserAccountType = 'ceo' | 'team_leader';
+export type UserAccountType = 'ceo' | 'team_leader' | 'admin';
 
 export type SalesAgent = {
   id: string;

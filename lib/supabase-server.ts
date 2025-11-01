@@ -8,28 +8,28 @@ import { createServerClient } from '@supabase/ssr';
 
 export function createSupabaseServer() {
   const cookieStore = cookies();
-  const hdrs = headers();
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, // anon is fine for RLS-own-row ops
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
         get(name: string) {
           return cookieStore.get(name)?.value;
         },
-        set() {
-          /* Next handles cookie setting */
+        set(name: string, value: string, options: any) {
+          try {
+            cookieStore.set({ name, value, ...options });
+          } catch (error) {
+            // Cookie setting in Server Actions is read-only
+          }
         },
-        remove() {
-          /* Next handles cookie removal */
-        },
-      },
-      global: {
-        headers: {
-          // Forward for auth continuity in Route Handlers
-          'x-forwarded-for': hdrs.get('x-forwarded-for') ?? undefined,
-          'user-agent': hdrs.get('user-agent') ?? undefined,
+        remove(name: string, options: any) {
+          try {
+            cookieStore.set({ name, value: '', ...options });
+          } catch (error) {
+            // Cookie removal in Server Actions is read-only
+          }
         },
       },
     }

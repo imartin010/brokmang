@@ -7,15 +7,32 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 
-// Initialize OpenAI
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize OpenAI only if API key is available
+let openai: OpenAI | null = null;
+try {
+  if (process.env.OPENAI_API_KEY) {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+} catch (error) {
+  console.error("Failed to initialize OpenAI client:", error);
+}
 
 // Initialize Supabase with service role
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error("Missing Supabase configuration:", {
+    hasUrl: !!supabaseUrl,
+    hasServiceKey: !!supabaseServiceKey,
+  });
+}
+
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  supabaseUrl || "",
+  supabaseServiceKey || ""
 );
 
 interface InsightData {
@@ -28,25 +45,40 @@ interface InsightData {
 
 export async function POST(req: NextRequest) {
   try {
-    const { org_id, user_id } = await req.json();
+    const { user_id } = await req.json();
 
-    if (!org_id) {
+    if (!user_id) {
       return NextResponse.json(
-        { error: "Organization ID is required" },
+        { error: "User ID is required" },
         { status: 400 }
       );
     }
 
-    // Check if OpenAI API key is configured
-    if (!process.env.OPENAI_API_KEY) {
+    // Check if Supabase is configured
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("Supabase configuration missing");
       return NextResponse.json(
-        { error: "OpenAI API key not configured" },
+        { error: "Server configuration error: Supabase credentials missing" },
         { status: 500 }
       );
     }
 
+    // Check if OpenAI API key is configured
+    if (!process.env.OPENAI_API_KEY || !openai) {
+      console.error("OpenAI API key not configured");
+      // Return fallback insights instead of error
+      const insightData = await fetchUserData(user_id);
+      const fallbackInsights = getFallbackInsights(insightData);
+      return NextResponse.json({
+        success: true,
+        insights: fallbackInsights,
+        generated_at: new Date().toISOString(),
+        note: "Using fallback insights (OpenAI API key not configured)",
+      });
+    }
+
     // 1. Fetch real data from database
-    const insightData = await fetchOrganizationData(org_id);
+    const insightData = await fetchUserData(user_id);
 
     // 2. Generate AI insights using OpenAI
     const insights = await generateAIInsights(insightData);
@@ -69,9 +101,9 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Fetch organization data for analysis
+ * Fetch user data for analysis
  */
-async function fetchOrganizationData(orgId: string): Promise<InsightData> {
+async function fetchUserData(userId: string): Promise<InsightData> {
   const currentDate = new Date();
   const currentMonth = currentDate.getMonth() + 1;
   const currentYear = currentDate.getFullYear();
@@ -80,46 +112,60 @@ async function fetchOrganizationData(orgId: string): Promise<InsightData> {
   const previousMonth = currentMonth === 1 ? 12 : currentMonth - 1;
   const previousYear = currentMonth === 1 ? currentYear - 1 : currentYear;
 
-  // Fetch agents
-  const { data: agents } = await supabase
+  // Fetch agents (all active agents for the user)
+  // Note: sales_agents table doesn't have user_id, so we fetch all active agents
+  // This is intentional as agents are shared across users in the system
+  const { data: agents, error: agentsError } = await supabase
     .from("sales_agents")
-    .select("id, name, role, is_active")
-    .eq("org_id", orgId)
+    .select("id, full_name, role, is_active")
     .eq("is_active", true);
 
+  if (agentsError) {
+    console.error("Error fetching agents:", agentsError);
+    throw new Error(`Failed to fetch agents: ${agentsError.message}`);
+  }
+
   // Fetch current month scores
-  const { data: currentScores } = await supabase
+  const { data: currentScores, error: currentScoresError } = await supabase
     .from("agent_monthly_scores")
     .select("*")
-    .eq("org_id", orgId)
     .eq("year", currentYear)
     .eq("month", currentMonth);
 
+  if (currentScoresError) {
+    console.error("Error fetching current scores:", currentScoresError);
+    throw new Error(`Failed to fetch current scores: ${currentScoresError.message}`);
+  }
+
   // Fetch previous month scores for comparison
-  const { data: previousScores } = await supabase
+  const { data: previousScores, error: previousScoresError } = await supabase
     .from("agent_monthly_scores")
     .select("*")
-    .eq("org_id", orgId)
     .eq("year", previousYear)
     .eq("month", previousMonth);
+
+  if (previousScoresError) {
+    console.error("Error fetching previous scores:", previousScoresError);
+    throw new Error(`Failed to fetch previous scores: ${previousScoresError.message}`);
+  }
 
   // Fetch recent daily logs (last 30 days)
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const { data: dailyLogs } = await supabase
+  const { data: dailyLogs, error: logsError } = await supabase
     .from("agent_daily_logs")
     .select("*")
-    .eq("org_id", orgId)
     .gte("log_date", thirtyDaysAgo.toISOString().split("T")[0])
     .order("log_date", { ascending: false });
 
-  // Fetch org finance settings
-  const { data: orgSettings } = await supabase
-    .from("org_finance_settings")
-    .select("*")
-    .eq("org_id", orgId)
-    .single();
+  if (logsError) {
+    console.error("Error fetching daily logs:", logsError);
+    throw new Error(`Failed to fetch daily logs: ${logsError.message}`);
+  }
+
+  // No org finance settings - use empty object
+  const orgSettings = {};
 
   return {
     agents: agents || [],
@@ -137,6 +183,12 @@ async function fetchOrganizationData(orgId: string): Promise<InsightData> {
  * Generate AI insights using OpenAI
  */
 async function generateAIInsights(data: InsightData) {
+  // If OpenAI is not available, return fallback insights
+  if (!openai) {
+    console.log("OpenAI not available, using fallback insights");
+    return getFallbackInsights(data);
+  }
+
   // Prepare data summary for AI
   const dataSummary = prepareDataSummary(data);
 
@@ -287,7 +339,7 @@ function prepareDataSummary(data: InsightData): string {
 ${topPerformers
   .map((s, i) => {
     const agent = agents.find((a) => a.id === s.agent_id);
-    return `${i + 1}. ${agent?.name || "Unknown"}: ${(s.score || 0).toFixed(1)}%`;
+    return `${i + 1}. ${agent?.full_name || "Unknown"}: ${(s.score || 0).toFixed(1)}%`;
   })
   .join("\n")}
 
@@ -295,7 +347,7 @@ ${topPerformers
 ${bottomPerformers
   .map((s, i) => {
     const agent = agents.find((a) => a.id === s.agent_id);
-    return `${i + 1}. ${agent?.name || "Unknown"}: ${(s.score || 0).toFixed(1)}%`;
+    return `${i + 1}. ${agent?.full_name || "Unknown"}: ${(s.score || 0).toFixed(1)}%`;
   })
   .join("\n")}
 
@@ -306,7 +358,7 @@ ${currentScores
     const previous = previousScores.find((p) => p.agent_id === s.agent_id);
     const kpis = s.kpis || {};
     return `
-- ${agent?.name || "Unknown"}:
+- ${agent?.full_name || "Unknown"}:
   - Current Score: ${(s.score || 0).toFixed(1)}%
   - Previous Score: ${previous ? (previous.score || 0).toFixed(1) : "N/A"}%
   - Attendance: ${(kpis.attendance_month || 0).toFixed(1)}%
@@ -376,7 +428,7 @@ function getFallbackInsights(data: InsightData) {
     insights.push({
       type: "top_performer",
       title: "Star Performer Identified",
-      description: `${topAgent?.name || "An agent"} is consistently outperforming targets`,
+      description: `${topAgent?.full_name || "An agent"} is consistently outperforming targets`,
       confidence: 90,
       reasons: [
         `Score: ${sortedCurrent[0].score.toFixed(1)}%`,

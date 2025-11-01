@@ -5,6 +5,7 @@
 
 'use client';
 
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
@@ -22,11 +23,100 @@ import {
   ArrowRight,
   TrendingDown,
   Clock,
+  Loader2,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { supabase } from '@/lib/supabase-browser';
 
 export default function CeoDashboard() {
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalRevenue: 0,
+    activeAgents: 0,
+    operatingCost: 0,
+    avgPerformance: 0,
+    teams: 0,
+  });
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Get active agents count
+      const { count: agentCount } = await supabase
+        .from('sales_agents')
+        .select('*', { count: 'exact', head: true })
+        .eq('is_active', true);
+
+      // Get teams count (if teams table exists)
+      let teamCount = 0;
+      try {
+        const { count } = await supabase
+          .from('teams')
+          .select('*', { count: 'exact', head: true })
+          .eq('is_active', true);
+        teamCount = count || 0;
+      } catch (error) {
+        // Teams table might not exist, that's okay
+        teamCount = 0;
+      }
+
+      // Get current month scores for performance calculation
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+      
+      const { data: currentScores } = await supabase
+        .from('agent_monthly_scores')
+        .select('score')
+        .eq('year', currentYear)
+        .eq('month', currentMonth);
+
+      // Calculate average performance
+      const avgPerformance = currentScores && currentScores.length > 0
+        ? Math.round(currentScores.reduce((sum, s) => sum + (s.score || 0), 0) / currentScores.length)
+        : 0;
+
+      // Get total revenue from daily logs (last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      const { data: recentLogs } = await supabase
+        .from('agent_daily_logs')
+        .select('sales_amount')
+        .gte('log_date', thirtyDaysAgo.toISOString().split('T')[0]);
+
+      const totalRevenue = recentLogs?.reduce((sum, log) => sum + (log.sales_amount || 0), 0) || 0;
+
+      setStats({
+        totalRevenue,
+        activeAgents: agentCount || 0,
+        operatingCost: 0, // Will be calculated from actual costs when available
+        avgPerformance,
+        teams: teamCount || 0,
+      });
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8 flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
@@ -55,10 +145,15 @@ export default function CeoDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Total Revenue</p>
-                  <p className="text-2xl font-bold">EGP 2.4M</p>
+                  <p className="text-2xl font-bold">
+                    {stats.totalRevenue > 0 
+                      ? `EGP ${(stats.totalRevenue / 1000).toFixed(1)}K`
+                      : 'EGP 0'
+                    }
+                  </p>
                   <p className="text-xs text-green-500 flex items-center gap-1 mt-1">
                     <TrendingUp className="h-3 w-3" />
-                    +12% from last month
+                    {stats.totalRevenue > 0 ? 'Last 30 days' : 'No data yet'}
                   </p>
                 </div>
                 <div className="p-3 rounded-full bg-green-500/10">
@@ -79,10 +174,10 @@ export default function CeoDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Active Agents</p>
-                  <p className="text-2xl font-bold">24</p>
+                  <p className="text-2xl font-bold">{stats.activeAgents}</p>
                   <p className="text-xs text-blue-500 flex items-center gap-1 mt-1">
                     <Users className="h-3 w-3" />
-                    3 teams
+                    {stats.teams > 0 ? `${stats.teams} teams` : 'No teams yet'}
                   </p>
                 </div>
                 <div className="p-3 rounded-full bg-blue-500/10">
@@ -103,10 +198,18 @@ export default function CeoDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Operating Cost</p>
-                  <p className="text-2xl font-bold">EGP 840K</p>
+                  <p className="text-2xl font-bold">
+                    {stats.operatingCost > 0 
+                      ? `EGP ${(stats.operatingCost / 1000).toFixed(1)}K`
+                      : 'EGP 0'
+                    }
+                  </p>
                   <p className="text-xs text-orange-500 flex items-center gap-1 mt-1">
-                    <TrendingDown className="h-3 w-3" />
-                    35% of revenue
+                    <PieChartIcon className="h-3 w-3" />
+                    {stats.operatingCost > 0 && stats.totalRevenue > 0
+                      ? `${Math.round((stats.operatingCost / stats.totalRevenue) * 100)}% of revenue`
+                      : 'No data yet'
+                    }
                   </p>
                 </div>
                 <div className="p-3 rounded-full bg-orange-500/10">
@@ -127,10 +230,13 @@ export default function CeoDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Avg Performance</p>
-                  <p className="text-2xl font-bold">87%</p>
+                  <p className="text-2xl font-bold">{stats.avgPerformance}%</p>
                   <p className="text-xs text-purple-500 flex items-center gap-1 mt-1">
                     <Target className="h-3 w-3" />
-                    Excellent
+                    {stats.avgPerformance > 0 
+                      ? stats.avgPerformance >= 80 ? 'Excellent' : stats.avgPerformance >= 60 ? 'Good' : 'Needs Improvement'
+                      : 'No data yet'
+                    }
                   </p>
                 </div>
                 <div className="p-3 rounded-full bg-purple-500/10">

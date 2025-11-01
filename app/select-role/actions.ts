@@ -24,13 +24,12 @@ export async function setUserRole(formData: FormData) {
 
   // Upsert own row. RLS allows only self user_id.
   const { error } = await supabase
-    .from('sales_agents')
+    .from('user_profiles')
     .upsert(
       {
         user_id: user.id,
         user_type: parsed.data.user_type,
         full_name: user.email?.split('@')[0] ?? 'User',
-        is_active: true,
       },
       { onConflict: 'user_id' }
     )

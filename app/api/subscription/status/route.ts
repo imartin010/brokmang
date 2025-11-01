@@ -23,25 +23,55 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Debug: Get ALL subscriptions for this user to see what exists
+    const { data: allSubscriptions, error: allSubError } = await supabase
+      .from("subscriptions")
+      .select("*")
+      .eq("user_id", user_id)
+      .order("created_at", { ascending: false });
+    
+    // If table doesn't exist, return no subscription
+    if (allSubError && allSubError.code === 'PGRST116') {
+      return NextResponse.json({
+        has_subscription: false,
+        pending_payment: false,
+        info: "Subscription system not yet initialized",
+        error: allSubError.message
+      });
+    }
+
+    if (allSubError) {
+      console.error("Error fetching all subscriptions:", allSubError);
+      // Continue anyway, but log the error
+    }
+
     // Get active subscription
+    // Use NOW() for date comparison to handle timezones correctly
+    const now = new Date().toISOString();
     const { data: subscription, error: subError } = await supabase
       .from("subscriptions")
       .select("*")
       .eq("user_id", user_id)
       .eq("status", "active")
-      .gt("end_date", new Date().toISOString())
+      .gt("end_date", now)
       .order("end_date", { ascending: false })
       .limit(1)
       .maybeSingle();
     
-    // If table doesn't exist, return no subscription
-    if (subError && subError.code === 'PGRST116') {
-      return NextResponse.json({
-        has_subscription: false,
-        pending_payment: false,
-        info: "Subscription system not yet initialized"
-      });
+    if (subError && subError.code !== 'PGRST02') { // PGRST02 is "not found" which is OK
+      console.error("Error fetching active subscription:", subError);
     }
+
+    // Log for debugging
+    console.log("Subscription check:", {
+      user_id,
+      found_subscription: !!subscription,
+      subscription_id: subscription?.id,
+      subscription_status: subscription?.status,
+      subscription_end_date: subscription?.end_date,
+      current_time: now,
+      all_subscriptions_count: allSubscriptions?.length || 0,
+    });
 
     if (subscription) {
       const daysRemaining = Math.ceil(
@@ -84,9 +114,19 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // Return debug info in development
+    const isDevelopment = process.env.NODE_ENV === 'development';
     return NextResponse.json({
       has_subscription: false,
       pending_payment: false,
+      ...(isDevelopment && {
+        debug: {
+          all_subscriptions: allSubscriptions || [],
+          found_count: allSubscriptions?.length || 0,
+          user_id: user_id,
+          current_time: new Date().toISOString(),
+        }
+      })
     });
   } catch (error: any) {
     console.error("Error checking subscription status:", error);

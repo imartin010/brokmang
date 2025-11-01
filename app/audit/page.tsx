@@ -19,16 +19,16 @@ import type { SystemLog } from "@/lib/types";
 import { formatDistanceToNow } from "date-fns";
 
 export default function AuditPage() {
-  const { user, currentOrgId, userRole } = useAuth();
+  const { user } = useAuth();
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   
   useEffect(() => {
-    if (currentOrgId && userRole) {
+    if (user) {
       loadAuditLogs();
     }
-  }, [currentOrgId, userRole]);
+  }, [user]);
   
   const loadAuditLogs = async () => {
     try {
@@ -37,7 +37,6 @@ export default function AuditPage() {
       const { data, error } = await supabase
         .from('system_logs')
         .select('*')
-        .eq('org_id', currentOrgId)
         .order('created_at', { ascending: false })
         .limit(100);
       
@@ -51,20 +50,20 @@ export default function AuditPage() {
     }
   };
   
-  // Check permissions
-  const canViewAudit = userRole && hasPermission(userRole, 'audit:read');
-  
-  if (!user || !currentOrgId) {
+  if (!user) {
     return (
       <div className="container mx-auto py-8 px-4">
         <Card>
           <CardContent className="p-16 text-center">
-            <p className="text-muted-foreground">Please select an organization first</p>
+            <p className="text-muted-foreground">Please sign in first</p>
           </CardContent>
         </Card>
       </div>
     );
   }
+  
+  // Allow all authenticated users to view audit logs (no org restriction)
+  const canViewAudit = true;
   
   if (!canViewAudit) {
     return (
@@ -115,7 +114,7 @@ export default function AuditPage() {
               <span className="text-sm font-medium">Filter by:</span>
             </div>
             <div className="flex gap-2">
-              {['all', 'organizations', 'sales_agents', 'branches', 'teams'].map((f) => (
+              {['all', 'sales_agents'].map((f) => (
                 <Button
                   key={f}
                   variant={filter === f ? 'default' : 'outline'}

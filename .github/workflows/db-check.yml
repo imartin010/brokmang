@@ -1,0 +1,37 @@
+name: DB Introspection
+
+on: 
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with: 
+          node-version: '20'
+      
+      - run: npm ci
+      
+      - name: Generate schema catalog
+        run: npm run db:introspect
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      
+      - name: Check for policy smells
+        run: npm run db:check
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: schema-catalog
+          path: schema/
+          retention-days: 30
+

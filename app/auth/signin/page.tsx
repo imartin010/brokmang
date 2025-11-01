@@ -1,6 +1,6 @@
 /**
- * Sign In Page
- * Simple, clean sign-in form
+ * Sign In Page - Clean Rebuild
+ * Simple, reliable sign-in that works with user_profiles
  */
 
 'use client';
@@ -14,7 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { signInUser } from '@/lib/auth-simple';
+import { supabase } from '@/lib/supabase-browser';
 
 export default function SignInPage() {
   const router = useRouter();
@@ -29,18 +29,36 @@ export default function SignInPage() {
     setError('');
 
     try {
-      const result = await signInUser(email, password);
+      console.log('Attempting sign in...');
+      
+      // Sign in with Supabase
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      if (result.success) {
-        // Redirect to dashboard
-        router.push('/dashboard');
-        router.refresh();
-      } else {
-        setError(result.message);
+      if (signInError) {
+        console.error('Sign in error:', signInError);
+        setError(signInError.message);
+        setLoading(false);
+        return;
       }
+
+      if (!data.session) {
+        setError('No session created. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      console.log('Sign in successful! Session:', data.session.user.id);
+      
+      // Success - redirect immediately to dashboard
+      // Use window.location for hard redirect (bypasses cache)
+      window.location.href = '/dashboard';
+
     } catch (err: any) {
-      setError(err.message || 'Sign in failed');
-    } finally {
+      console.error('Unexpected error:', err);
+      setError(err.message || 'Sign in failed. Please try again.');
       setLoading(false);
     }
   };
@@ -53,12 +71,15 @@ export default function SignInPage() {
         className="w-full max-w-md"
       >
         {/* Back to Home */}
-        <Link href="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors">
+        <Link 
+          href="/" 
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
+        >
           <ArrowLeft className="h-4 w-4" />
           Back to home
         </Link>
 
-        <Card className="glass">
+        <Card className="glass shadow-xl">
           <CardHeader className="space-y-1">
             <CardTitle className="text-3xl font-bold text-center bg-gradient-to-r from-[#257CFF] to-[#F45A2A] bg-clip-text text-transparent">
               Welcome Back
@@ -85,6 +106,7 @@ export default function SignInPage() {
                     required
                     disabled={loading}
                     autoComplete="email"
+                    autoFocus
                   />
                 </div>
               </div>
@@ -114,7 +136,8 @@ export default function SignInPage() {
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="p-3 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-sm"
+                  className="p-3 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-sm border border-red-500/20"
+                  role="alert"
                 >
                   {error}
                 </motion.div>
@@ -123,7 +146,7 @@ export default function SignInPage() {
               {/* Submit Button */}
               <Button
                 type="submit"
-                className="w-full gradient-bg"
+                className="w-full gradient-bg h-11"
                 size="lg"
                 disabled={loading}
               >
@@ -142,7 +165,10 @@ export default function SignInPage() {
             <div className="mt-6 text-center">
               <p className="text-sm text-muted-foreground">
                 Don't have an account?{' '}
-                <Link href="/auth/signup" className="text-primary hover:underline font-medium">
+                <Link 
+                  href="/auth/signup" 
+                  className="text-primary hover:underline font-medium transition-colors"
+                >
                   Sign up
                 </Link>
               </p>
@@ -153,4 +179,3 @@ export default function SignInPage() {
     </div>
   );
 }
-

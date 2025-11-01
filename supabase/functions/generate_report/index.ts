@@ -16,7 +16,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 type ReportType = "sales" | "kpi" | "financial" | "monthly";
 
 interface ReportRequest {
-  org_id: string;
   report_type: ReportType;
   year: number;
   month: number;
@@ -235,11 +234,23 @@ function getReportTitle(reportType: ReportType): string {
 function generateSalesReport(data: any): string {
   const agents = data.agents || [];
   
+  console.log(`Generating sales report for ${agents.length} agents`);
+  
   const totalSales = agents.reduce((sum: number, a: any) => sum + (a.total_sales || 0), 0);
   const totalMeetings = agents.reduce((sum: number, a: any) => sum + (a.total_meetings || 0), 0);
   const avgScore = agents.length > 0 
     ? agents.reduce((sum: number, a: any) => sum + (a.score || 0), 0) / agents.length 
     : 0;
+  
+  // If no agents, show a message
+  if (agents.length === 0) {
+    return `
+      <div class="summary-box">
+        <div class="summary-title">No Data Available</div>
+        <p style="padding: 20px; text-align: center;">No sales data found for this period. Please add agents and log their activities first.</p>
+      </div>
+    `;
+  }
 
   return `
     <div class="summary-box">
@@ -448,27 +459,21 @@ serve(async (req: Request) => {
 
     // Parse request
     const requestData: ReportRequest = await req.json();
-    const { org_id, report_type, year, month, title } = requestData;
+    const { report_type, year, month, title } = requestData;
 
-    if (!org_id || !report_type || !year || !month) {
+    if (!report_type || !year || !month) {
       return new Response(
         JSON.stringify({ error: "Missing required fields" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // 1. Get organization branding
-    const { data: org } = await supabase
-      .from("organizations")
-      .select("name, logo_url, primary_color, secondary_color")
-      .eq("id", org_id)
-      .single();
-
+    // 1. Use default branding (no organization)
     const branding: OrgBranding = {
-      name: org?.name || "Organization",
-      logo_url: org?.logo_url,
-      primary_color: org?.primary_color,
-      secondary_color: org?.secondary_color,
+      name: "Brokmang",
+      logo_url: undefined,
+      primary_color: "#2563eb",
+      secondary_color: "#1e40af",
     };
 
     // 2. Fetch report data based on type
@@ -476,7 +481,7 @@ serve(async (req: Request) => {
 
     if (report_type === "sales" || report_type === "kpi" || report_type === "monthly") {
       // Get agent scores and daily logs for the month
-      const { data: scores } = await supabase
+      const { data: scores, error: scoresError } = await supabase
         .from("agent_monthly_scores")
         .select(`
           agent_id,
@@ -484,20 +489,28 @@ serve(async (req: Request) => {
           kpis,
           sales_agents (name)
         `)
-        .eq("org_id", org_id)
         .eq("year", year)
         .eq("month", month);
+
+      if (scoresError) {
+        console.error("Error fetching scores:", scoresError);
+        // Continue with empty data instead of failing
+      }
 
       // Get daily logs summary
       const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
       const endDate = new Date(year, month, 0).toISOString().split("T")[0];
 
-      const { data: logs } = await supabase
+      const { data: logs, error: logsError } = await supabase
         .from("agent_daily_logs")
         .select("agent_id, calls_count, meetings_count, sales_amount")
-        .eq("org_id", org_id)
         .gte("log_date", startDate)
         .lte("log_date", endDate);
+
+      if (logsError) {
+        console.error("Error fetching logs:", logsError);
+        // Continue with empty data instead of failing
+      }
 
       // Aggregate logs by agent
       const agentStats = new Map();
@@ -545,39 +558,59 @@ serve(async (req: Request) => {
     }
 
     // 3. Generate HTML
+    console.log("Report data:", JSON.stringify(reportData, null, 2));
+    console.log("Branding:", JSON.stringify(branding, null, 2));
+    
     const html = generateReportHTML(reportData, branding, report_type, year, month);
+    console.log("Generated HTML length:", html.length);
 
     // 4. Return HTML (in production, you'd convert this to PDF using a service like Puppeteer/Chrome)
     // For now, we return the HTML which can be converted client-side or via another service
     
     const fileName = `${report_type}-report-${year}-${String(month).padStart(2, "0")}.html`;
-    const filePath = `${org_id}/${year}/${month}/${fileName}`;
+    const filePath = `reports/${year}/${month}/${fileName}`;
 
     // Upload to storage (as HTML for now)
     const encoder = new TextEncoder();
     const htmlBlob = encoder.encode(html);
     
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("reports")
-      .upload(filePath, htmlBlob, {
-        contentType: "text/html",
-        upsert: true,
-      });
+    // Try to upload to storage, but if it fails, return HTML directly
+    let downloadUrl = "";
+    
+    try {
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("reports")
+        .upload(filePath, htmlBlob, {
+          contentType: "text/html",
+          upsert: true,
+        });
 
-    if (uploadError) {
-      throw uploadError;
+      if (uploadError) {
+        console.error("Storage upload error:", uploadError);
+        // Don't throw - continue without storage
+      } else {
+        // Create signed URL (valid for 1 hour)
+        const { data: signedUrl } = await supabase.storage
+          .from("reports")
+          .createSignedUrl(filePath, 3600);
+        
+        downloadUrl = signedUrl?.signedUrl || "";
+      }
+    } catch (storageError: any) {
+      console.error("Storage error (continuing without storage):", storageError);
     }
 
-    // Create signed URL (valid for 1 hour)
-    const { data: signedUrl } = await supabase.storage
-      .from("reports")
-      .createSignedUrl(filePath, 3600);
+    // If storage failed, return HTML as data URL
+    if (!downloadUrl) {
+      const base64Html = btoa(unescape(encodeURIComponent(html)));
+      downloadUrl = `data:text/html;base64,${base64Html}`;
+    }
 
     return new Response(
       JSON.stringify({
         success: true,
         file_path: filePath,
-        download_url: signedUrl?.signedUrl,
+        download_url: downloadUrl,
         report_type,
         period: `${year}-${String(month).padStart(2, "0")}`,
       }),
@@ -590,9 +623,16 @@ serve(async (req: Request) => {
       }
     );
   } catch (error: any) {
-    console.error("Error:", error);
+    console.error("Error generating report:", error);
+    console.error("Error stack:", error.stack);
+    console.error("Error details:", JSON.stringify(error, null, 2));
+    
     return new Response(
-      JSON.stringify({ error: error.message || "Internal server error" }),
+      JSON.stringify({ 
+        error: error.message || "Internal server error",
+        details: error.toString(),
+        stack: error.stack
+      }),
       {
         status: 500,
         headers: {

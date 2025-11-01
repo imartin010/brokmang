@@ -7,8 +7,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { DEFAULT_INPUTS, inputsSchema } from "@/lib/schemas";
 import { Inputs, Results } from "@/lib/types";
+
+const DEFAULT_INPUTS: Inputs = {
+  agents: 10,
+  team_leaders: 2,
+  rent: 5000,
+  salary: 5000,
+  team_leader_share: 0.15,
+  others: 3000,
+  marketing: 5000,
+  sim: 1000,
+  franchise_owner_salary: 15000,
+  gross_rate: 0.04,
+  agent_comm_per_1m: 5000,
+  tl_comm_per_1m: 2500,
+  withholding: 0.05,
+  vat: 0.14,
+  income_tax: 0.10,
+};
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { KPICard } from "@/components/kpi-card";
 import { DollarSign, TrendingUp, Users, PieChart as PieChartIcon } from "lucide-react";
@@ -16,6 +33,8 @@ import { supabase } from "@/lib/supabase-browser";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/zustand/store";
+
+// Helper removed - no longer need org_id
 
 export default function AnalyzePage() {
   const router = useRouter();
@@ -45,6 +64,7 @@ export default function AnalyzePage() {
 
   // Calculate rent per agent when total rent changes
   useEffect(() => {
+    if (!inputs) return;
     if (!usePerAgentRent && totalOfficeRent > 0) {
       const totalPeople = inputs.agents + inputs.team_leaders;
       if (totalPeople > 0) {
@@ -52,15 +72,15 @@ export default function AnalyzePage() {
         setInputs(prev => ({ ...prev, rent: Math.round(rentPerAgent * 100) / 100 }));
       }
     }
-  }, [usePerAgentRent, totalOfficeRent, inputs.agents, inputs.team_leaders]);
+  }, [usePerAgentRent, totalOfficeRent, inputs?.agents, inputs?.team_leaders]);
 
   const checkUserAccess = async (userId: string) => {
     try {
       const { data } = await supabase
-        .from("sales_agents")
+        .from("user_profiles")
         .select("user_type")
         .eq("user_id", userId)
-        .single();
+        .maybeSingle();
 
       // If user is team leader, show access denied
       if (data?.user_type === "team_leader") {
@@ -178,16 +198,10 @@ export default function AnalyzePage() {
       setLoading(true);
       setErrors({});
 
-      // Validate inputs
-      const validation = inputsSchema.safeParse(inputs);
-      if (!validation.success) {
-        const fieldErrors: Record<string, string> = {};
-        validation.error.errors.forEach((err) => {
-          if (err.path[0]) {
-            fieldErrors[err.path[0] as string] = err.message;
-          }
-        });
-        setErrors(fieldErrors);
+      // Basic validation
+      if (!inputs || inputs.agents < 0 || inputs.team_leaders < 0) {
+        setErrors({ agents: 'Invalid input values' });
+        setLoading(false);
         return;
       }
 
@@ -215,7 +229,7 @@ export default function AnalyzePage() {
   const handleSave = async () => {
     if (!user) {
       alert("Please sign in to save scenarios");
-      router.push("/auth");
+      router.push("/auth/signin");
       return;
     }
 
@@ -227,23 +241,49 @@ export default function AnalyzePage() {
     try {
       setSaving(true);
 
-      const { error } = await supabase.from("break_even_records").insert({
-        user_id: user.id,
-        inputs,
-        results,
-      });
+      // Validate data before saving
+      if (!inputs || !results) {
+        throw new Error("Missing inputs or results");
+      }
 
-      if (error) throw error;
+      const { data: insertData, error } = await supabase
+        .from("break_even_records")
+        .insert({
+          user_id: user.id,
+          inputs: inputs as any,
+          results: results as any,
+        })
+        .select()
+        .single();
 
-      alert("✅ Scenario saved successfully! Redirecting to dashboard...");
+      if (error) {
+        // Log full error details for debugging
+        console.error("Supabase error details:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        });
+        
+        const errorMsg = error.message || error.details || error.hint || `Database error (code: ${error.code || 'unknown'})`;
+        throw new Error(errorMsg);
+      }
+
+      if (!insertData) {
+        throw new Error("No data returned from insert");
+      }
+
+      alert("✅ Scenario saved successfully!");
       
-      // Redirect to dashboard to see the saved data
+      // Redirect to history page to see the saved data
       setTimeout(() => {
-        router.push("/");
+        router.push("/history");
       }, 500);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving:", error);
-      alert("❌ Failed to save scenario");
+      const errorMessage = error?.message || error?.toString() || "Unknown error occurred";
+      alert(`❌ Failed to save scenario: ${errorMessage}`);
     } finally {
       setSaving(false);
     }

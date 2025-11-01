@@ -8,7 +8,6 @@ import { supabase } from "./supabase-browser";
 export type ReportType = "sales" | "kpi" | "financial" | "monthly";
 
 export interface GenerateReportParams {
-  orgId: string;
   reportType: ReportType;
   year: number;
   month: number;
@@ -29,28 +28,54 @@ export interface GenerateReportResponse {
 export async function generateReport(
   params: GenerateReportParams
 ): Promise<GenerateReportResponse> {
-  const { data, error } = await supabase.functions.invoke("generate_report", {
-    body: {
-      org_id: params.orgId,
-      report_type: params.reportType,
-      year: params.year,
-      month: params.month,
-      title: params.title,
-    },
-  });
+  try {
+    const { data, error } = await supabase.functions.invoke("generate_report", {
+      body: {
+        report_type: params.reportType,
+        year: params.year,
+        month: params.month,
+        title: params.title,
+      },
+    });
 
-  if (error) {
-    throw new Error(error.message || "Failed to generate report");
+    if (error) {
+      console.error('Edge function error:', error);
+      throw new Error(error.message || "Failed to generate report");
+    }
+
+    if (!data) {
+      throw new Error("No data returned from edge function");
+    }
+
+    return data as GenerateReportResponse;
+  } catch (err: any) {
+    console.error('Report generation error:', err);
+    throw new Error(err.message || "Failed to generate report");
   }
-
-  return data as GenerateReportResponse;
 }
 
 /**
  * Download a report (opens in new tab)
  */
 export function downloadReport(downloadUrl: string) {
-  window.open(downloadUrl, "_blank");
+  console.log('Opening report URL:', downloadUrl);
+  
+  if (!downloadUrl) {
+    console.error('No download URL provided');
+    alert('Error: No download URL generated. Please try again.');
+    return;
+  }
+  
+  // For data URLs, write to a new window directly
+  if (downloadUrl.startsWith('data:')) {
+    const newWindow = window.open('', '_blank');
+    if (newWindow) {
+      newWindow.document.write(atob(downloadUrl.split(',')[1]));
+      newWindow.document.close();
+    }
+  } else {
+    window.open(downloadUrl, "_blank");
+  }
 }
 
 /**
@@ -136,10 +161,6 @@ export function formatReportPeriod(year: number, month: number): string {
 export function validateReportParams(
   params: GenerateReportParams
 ): { valid: boolean; error?: string } {
-  if (!params.orgId) {
-    return { valid: false, error: "Organization ID is required" };
-  }
-
   if (!params.reportType) {
     return { valid: false, error: "Report type is required" };
   }

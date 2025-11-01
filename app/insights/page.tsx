@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/zustand/store";
 import { cn } from "@/lib/utils";
 import { SubscriptionPaymentModal } from "@/components/subscription-payment-modal";
+import { supabase } from "@/lib/supabase-browser";
 
 interface Insight {
   type: string;
@@ -52,7 +53,7 @@ const iconMap: Record<string, any> = {
 };
 
 export default function InsightsPage() {
-  const { currentOrgId, user, userAccountType } = useAuth();
+  const { user, userAccountType, setUserAccountType, loading: authLoading } = useAuth();
   const [loading, setLoading] = useState(false);
   const [insights, setInsights] = useState<Insight[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -60,27 +61,115 @@ export default function InsightsPage() {
   const [subscriptionStatus, setSubscriptionStatus] = useState<any>(null);
   const [checkingSubscription, setCheckingSubscription] = useState(true);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [loadingUserType, setLoadingUserType] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
-  // Check subscription status on mount
+  // Load userAccountType if not available
   useEffect(() => {
-    if (user?.id) {
-      checkSubscription();
-    } else {
-      setCheckingSubscription(false);
+    const loadUserType = async () => {
+      if (!user?.id || userAccountType || loadingUserType) return;
+      
+      setLoadingUserType(true);
+      try {
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('user_type')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        if (data?.user_type) {
+          // Map database value to TypeScript type
+          const mappedType = data.user_type === 'ceo' ? 'ceo' : 
+                           data.user_type === 'team_leader' ? 'team_leader' :
+                           data.user_type === 'admin' ? 'admin' :
+                           null;
+          if (mappedType) {
+            setUserAccountType(mappedType);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading user type:', error);
+      } finally {
+        setLoadingUserType(false);
+      }
+    };
+    
+    if (user?.id && !userAccountType) {
+      loadUserType();
     }
-  }, [user]);
+  }, [user?.id, userAccountType, setUserAccountType, loadingUserType]);
   
-  const checkSubscription = async () => {
-    if (!user?.id) {
+  // Get user directly from Supabase if not in store
+  useEffect(() => {
+    const fetchUser = async () => {
+      if (user?.id) {
+        setCurrentUserId(user.id);
+        return;
+      }
+      
+      // If user not in store, get it directly from Supabase
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        
+        const { data: { user: supabaseUser }, error } = await supabase.auth.getUser();
+        
+        clearTimeout(timeoutId);
+        
+        if (supabaseUser) {
+          setCurrentUserId(supabaseUser.id);
+        } else {
+          console.warn("[Insights] No user found, stopping subscription check");
+          setCheckingSubscription(false);
+        }
+      } catch (error: any) {
+        console.error("[Insights] Error fetching user:", error);
+        setCheckingSubscription(false);
+      }
+    };
+    
+    fetchUser();
+  }, [user?.id]);
+  
+  // Check subscription status on mount and when user loads
+  useEffect(() => {
+    if (currentUserId) {
+      checkSubscription(currentUserId);
+    } else if (!authLoading && !currentUserId && !checkingSubscription) {
+      // User not loaded and auth is done loading - only set if not already checking
+      // This prevents unnecessary state updates
+    } else if (!authLoading && !currentUserId) {
+      // If auth is done but no user, stop checking after a short delay
+      const timeout = setTimeout(() => {
+        setCheckingSubscription(false);
+      }, 3000);
+      return () => clearTimeout(timeout);
+    }
+    // If authLoading is true, keep checkingSubscription true (show loading state)
+  }, [currentUserId, authLoading]);
+  
+  const checkSubscription = async (userId: string) => {
+    if (!userId) {
+      console.log("[Insights] No user ID provided, skipping subscription check");
       setCheckingSubscription(false);
       return;
     }
     
+    console.log("[Insights] Checking subscription for user:", userId);
+    
     try {
-      const response = await fetch(`/api/subscription/status?user_id=${user.id}`);
+      // Add timeout to fetch request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+      
+      const response = await fetch(`/api/subscription/status?user_id=${userId}`, {
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
-        console.error("Subscription check failed:", response.status);
+        console.error("[Insights] Subscription check failed:", response.status);
         // If table doesn't exist or error, assume no subscription
         setSubscriptionStatus({ has_subscription: false, pending_payment: false });
         setCheckingSubscription(false);
@@ -88,26 +177,28 @@ export default function InsightsPage() {
       }
       
       const data = await response.json();
+      console.log("[Insights] Subscription status response:", data);
       setSubscriptionStatus(data);
-    } catch (error) {
-      console.error("Error checking subscription:", error);
+    } catch (error: any) {
+      console.error("[Insights] Error checking subscription:", error);
       // On error, assume no subscription (show paywall)
       setSubscriptionStatus({ has_subscription: false, pending_payment: false });
     } finally {
+      // Always stop checking to ensure UI updates
       setCheckingSubscription(false);
     }
   };
   
-  // Auto-generate insights on mount if org is selected AND has subscription
+  // Auto-generate insights on mount if has subscription
   useEffect(() => {
-    if (currentOrgId && insights.length === 0 && subscriptionStatus?.has_subscription) {
+    if (currentUserId && insights.length === 0 && subscriptionStatus?.has_subscription) {
       handleRefresh();
     }
-  }, [currentOrgId, subscriptionStatus]);
+  }, [currentUserId, subscriptionStatus]);
   
   const handleRefresh = async () => {
-    if (!currentOrgId) {
-      setError("Please select an organization first");
+    if (!currentUserId) {
+      setError("Please sign in first");
       return;
     }
 
@@ -121,8 +212,7 @@ export default function InsightsPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          org_id: currentOrgId,
-          user_id: user?.id,
+          user_id: currentUserId,
         }),
       });
 
@@ -148,8 +238,21 @@ export default function InsightsPage() {
     return 'text-yellow-600 dark:text-yellow-400';
   };
   
-  // Show loading while checking subscription
-  if (checkingSubscription) {
+  // Set timeout to prevent infinite loading
+  useEffect(() => {
+    if (checkingSubscription && !currentUserId) {
+      const timeout = setTimeout(() => {
+        console.warn("[Insights] Subscription check timeout, stopping loading");
+        setCheckingSubscription(false);
+      }, 10000); // 10 second timeout
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [checkingSubscription, currentUserId]);
+
+  // Show loading while checking subscription (but allow user to proceed if user exists)
+  // Only show loading if we don't have a user ID yet
+  if (checkingSubscription && !currentUserId) {
     return (
       <div className="container mx-auto px-4 py-8 min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -162,6 +265,7 @@ export default function InsightsPage() {
 
   // Show paywall if no active subscription
   if (!subscriptionStatus?.has_subscription && !subscriptionStatus?.pending_payment) {
+    // Default to team_leader pricing if userAccountType is not loaded
     const amount = userAccountType === "ceo" ? 100 : 50;
     const planName = userAccountType === "ceo" ? "CEO Plan" : "Team Leader Plan";
 
@@ -230,11 +334,57 @@ export default function InsightsPage() {
                   <Button
                     size="lg"
                     className="w-full gradient-bg text-lg py-6"
-                    onClick={() => {
-                      if (!user?.id || !userAccountType) {
-                        alert("Please wait for your account to load, then try again.");
-                        return;
+                    onClick={async () => {
+                      // Get user from store or session
+                      let currentUser = user;
+                      if (!currentUser?.id) {
+                        // Try to get user from session directly
+                        const { data: { user: sessionUser } } = await supabase.auth.getUser();
+                        if (!sessionUser) {
+                          alert("Please sign in to subscribe.");
+                          return;
+                        }
+                        currentUser = sessionUser;
                       }
+                      
+                      // Ensure user is set in store for modal
+                      if (currentUser && !user) {
+                        // User will be fetched by modal if needed
+                      }
+                      
+                      // If userAccountType is not loaded, try to load it
+                      let finalUserType = userAccountType;
+                      if (!finalUserType && currentUser?.id) {
+                        setLoadingUserType(true);
+                        try {
+                          const { data } = await supabase
+                            .from('user_profiles')
+                            .select('user_type')
+                            .eq('user_id', currentUser.id)
+                            .maybeSingle();
+                          
+                          if (data?.user_type) {
+                            const mappedType = data.user_type === 'ceo' ? 'ceo' : 
+                                             data.user_type === 'team_leader' ? 'team_leader' : 
+                                             null;
+                            if (mappedType) {
+                              setUserAccountType(mappedType);
+                              finalUserType = mappedType;
+                            }
+                          }
+                        } catch (error) {
+                          console.error('Error loading user type:', error);
+                        } finally {
+                          setLoadingUserType(false);
+                        }
+                        
+                        // If still no type, use default (team_leader pricing)
+                        if (!finalUserType) {
+                          finalUserType = 'team_leader';
+                        }
+                      }
+                      
+                      // Open modal - it will fetch user ID if needed
                       setShowPaymentModal(true);
                     }}
                   >
@@ -250,13 +400,12 @@ export default function InsightsPage() {
           </motion.div>
         </div>
 
-        {/* Payment Modal */}
+        {/* Payment Modal - User ID will be fetched by modal if not in props */}
         <SubscriptionPaymentModal
           isOpen={showPaymentModal}
           onClose={() => setShowPaymentModal(false)}
-          userType={userAccountType as "ceo" | "team_leader"}
-          userId={user?.id || ""}
-          orgId={currentOrgId || undefined}
+          userType={(userAccountType || 'team_leader') as "ceo" | "team_leader"}
+          userId={user?.id || ""} // Will be fetched by modal if empty
           onSuccess={() => {
             checkSubscription();
           }}
@@ -329,7 +478,7 @@ export default function InsightsPage() {
           <Button
             variant="outline"
             onClick={handleRefresh}
-            disabled={loading || !currentOrgId}
+            disabled={loading || !currentUserId}
           >
             {loading ? (
               <>
@@ -345,17 +494,6 @@ export default function InsightsPage() {
           </Button>
         </div>
 
-        {!currentOrgId && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800"
-          >
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              ⚠️ Please select an organization to generate AI insights
-            </p>
-          </motion.div>
-        )}
 
         {error && (
           <motion.div
@@ -470,7 +608,7 @@ export default function InsightsPage() {
               );
             })}
           </motion.div>
-        ) : !error && currentOrgId ? (
+        ) : !error && currentUserId ? (
           <motion.div
             key="empty"
             initial={{ opacity: 0 }}

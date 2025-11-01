@@ -13,15 +13,17 @@
     "test:coverage": "jest --coverage",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:debug": "playwright test --debug"
+    "test:e2e:debug": "playwright test --debug",
+    "db:introspect": "tsx scripts/introspect-db.ts",
+    "db:check": "tsx scripts/introspect-db.ts --check"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
     "@radix-ui/react-select": "^2.0.0",
     "@radix-ui/react-tooltip": "^1.0.7",
     "@sentry/nextjs": "^8.0.0",
-    "@supabase/supabase-js": "^2.39.1",
     "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.39.1",
     "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
@@ -30,6 +32,7 @@
     "lucide-react": "^0.460.0",
     "next": "^15.1.4",
     "openai": "^4.72.0",
+    "pg": "^8.16.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.15.0",
@@ -43,7 +46,7 @@
     "@testing-library/react": "^15.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/jest": "^29.5.11",
-    "@types/node": "^20.10.6",
+    "@types/node": "^20.19.24",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "autoprefixer": "^10.4.16",
@@ -53,6 +56,7 @@
     "jest-environment-jsdom": "^29.7.0",
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.0",
+    "tsx": "^4.20.6",
     "typescript": "^5.3.3"
   }
 }

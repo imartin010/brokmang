@@ -6,35 +6,105 @@
 
 'use client';
 
-import { useState, useTransition } from 'react';
-import { setUserRole } from './actions';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase-browser';
 import { motion } from 'framer-motion';
 import { Briefcase, Users, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 export default function SelectRolePage() {
-  const [pending, startTransition] = useTransition();
+  const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [selectedRole, setSelectedRole] = useState<'ceo' | 'team_leader' | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const router = useRouter();
 
-  function submitRole(role: 'ceo' | 'team_leader') {
-    const fd = new FormData();
-    fd.set('user_type', role);
+  // Check authentication on mount
+  useEffect(() => {
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setIsAuthenticated(false);
+        router.push('/auth/signup');
+      } else {
+        setIsAuthenticated(true);
+      }
+    })();
+  }, [router]);
+
+  async function submitRole(role: 'ceo' | 'team_leader') {
+    setLoading(true);
     setSelectedRole(role);
     setErr(null);
     
-    startTransition(async () => {
-      const res = await setUserRole(fd);
-      if (!res.ok) {
-        setErr(res.error ?? 'Failed to save role');
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        setErr('Not authenticated. Please sign in.');
         setSelectedRole(null);
-      } else {
-        router.replace('/dashboard');
+        setLoading(false);
+        return;
       }
-    });
+
+      console.log('Saving role:', role, 'for user:', user.id);
+
+      // Save to database
+      const { error } = await supabase
+        .from('user_profiles')
+        .upsert({
+          user_id: user.id,
+          user_type: role,
+          full_name: user.email?.split('@')[0] ?? 'User',
+        }, {
+          onConflict: 'user_id'
+        });
+
+      if (error) {
+        console.error('Database error:', error);
+        setErr(error.message);
+        setSelectedRole(null);
+        setLoading(false);
+        return;
+      }
+
+      console.log('Role saved successfully!');
+      
+      // Success - redirect (keep loading state)
+      setTimeout(() => {
+        router.replace('/dashboard');
+      }, 500);
+
+    } catch (error: any) {
+      console.error('Error saving role:', error);
+      setErr(error.message ?? 'Failed to save role');
+      setSelectedRole(null);
+      setLoading(false);
+    }
+  }
+
+  // Show loading while checking auth
+  if (isAuthenticated === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Show redirecting if not authenticated
+  if (isAuthenticated === false) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Redirecting to sign up...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -77,13 +147,13 @@ export default function SelectRolePage() {
             <Card 
               className={cn(
                 "glass cursor-pointer hover:shadow-xl transition-all h-full border-2",
-                pending ? "opacity-50 pointer-events-none" : "hover:scale-105 hover:border-primary/50",
+                loading ? "opacity-50 pointer-events-none" : "hover:scale-105 hover:border-primary/50",
                 selectedRole === 'ceo' && "border-primary ring-2 ring-primary/20"
               )}
-              onClick={() => !pending && submitRole('ceo')}
+              onClick={() => !loading && submitRole('ceo')}
               role="button"
               tabIndex={0}
-              aria-busy={pending && selectedRole === 'ceo'}
+              aria-busy={loading && selectedRole === 'ceo'}
             >
               <CardHeader>
                 <div className="flex justify-center mb-4">
@@ -122,7 +192,7 @@ export default function SelectRolePage() {
                   </li>
                 </ul>
                 <div className="pt-4">
-                  {pending && selectedRole === 'ceo' ? (
+                  {loading && selectedRole === 'ceo' ? (
                     <div className="flex items-center justify-center py-3">
                       <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" />
                       <span className="text-sm text-muted-foreground">Saving...</span>
@@ -146,13 +216,13 @@ export default function SelectRolePage() {
             <Card 
               className={cn(
                 "glass cursor-pointer hover:shadow-xl transition-all h-full border-2",
-                pending ? "opacity-50 pointer-events-none" : "hover:scale-105 hover:border-primary/50",
+                loading ? "opacity-50 pointer-events-none" : "hover:scale-105 hover:border-primary/50",
                 selectedRole === 'team_leader' && "border-primary ring-2 ring-primary/20"
               )}
-              onClick={() => !pending && submitRole('team_leader')}
+              onClick={() => !loading && submitRole('team_leader')}
               role="button"
               tabIndex={0}
-              aria-busy={pending && selectedRole === 'team_leader'}
+              aria-busy={loading && selectedRole === 'team_leader'}
             >
               <CardHeader>
                 <div className="flex justify-center mb-4">
@@ -191,7 +261,7 @@ export default function SelectRolePage() {
                   </li>
                 </ul>
                 <div className="pt-4">
-                  {pending && selectedRole === 'team_leader' ? (
+                  {loading && selectedRole === 'team_leader' ? (
                     <div className="flex items-center justify-center py-3">
                       <Loader2 className="h-5 w-5 animate-spin text-primary mr-2" />
                       <span className="text-sm text-muted-foreground">Saving...</span>
@@ -215,7 +285,7 @@ export default function SelectRolePage() {
           className="text-center mt-6"
         >
           <p className="text-sm text-muted-foreground">
-            {pending ? 'Saving your selection...' : 'Choose one to continue'}
+            {loading ? 'Saving your selection...' : 'Choose one to continue'}
           </p>
         </motion.div>
       </motion.div>

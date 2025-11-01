@@ -11,19 +11,14 @@ export async function GET(request: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // Fetch the latest break-even record for the organization
-  const { data, error } = await sb
-    .from("break_even_records")
-    .select("id, created_at, results")
-    .eq("org_id", auth.orgId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) return NextResponse.json({ error: "Query failed" }, { status: 500 });
-  if (!data) return NextResponse.json({ error: "No records" }, { status: 404 });
-
-  return NextResponse.json({ breakEven: data.results });
+  // Fetch the latest break-even record
+  // Note: break_even_records uses user_id (org_id was removed)
+  // Since organizations are removed, we'll need to update this API to use user_id from token
+  // For now, return error as this endpoint needs refactoring
+  return NextResponse.json(
+    { error: "This endpoint requires refactoring after organization removal. Use user-based endpoints instead." },
+    { status: 501 }
+  );
 }
 
 

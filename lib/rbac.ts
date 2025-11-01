@@ -75,7 +75,10 @@ export type Permission =
   
   // API Tokens
   | 'api_tokens:read'
-  | 'api_tokens:manage';
+  | 'api_tokens:manage'
+  
+  // Subscriptions
+  | 'subscriptions:validate';
 
 // Role-to-permissions mapping
 const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
@@ -114,6 +117,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'audit:read',
     'api_tokens:read',
     'api_tokens:manage',
+    'subscriptions:validate',
   ],
   
   ADMIN: [
@@ -147,6 +151,7 @@ const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     'audit:read',
     'api_tokens:read',
     'api_tokens:manage',
+    'subscriptions:validate',
   ],
   
   TEAM_LEADER: [

@@ -27,7 +27,7 @@ export default function AuthCallback() {
 
           if (error) {
             setMessage("Error confirming email. Please try again.");
-            setTimeout(() => router.push("/auth"), 3000);
+            setTimeout(() => router.push("/auth/signin"), 3000);
             return;
           }
 
@@ -36,7 +36,7 @@ export default function AuthCallback() {
           
           if (user) {
             const { data: agent } = await supabase
-              .from("sales_agents")
+              .from("user_profiles")
               .select("user_type")
               .eq("user_id", user.id)
               .single();
@@ -53,11 +53,11 @@ export default function AuthCallback() {
           setTimeout(() => router.push("/dashboard"), 2000);
         } else {
           setMessage("Invalid confirmation link.");
-          setTimeout(() => router.push("/auth"), 3000);
+          setTimeout(() => router.push("/auth/signin"), 3000);
         }
       } catch (error) {
         setMessage("An error occurred. Redirecting...");
-        setTimeout(() => router.push("/auth"), 3000);
+        setTimeout(() => router.push("/auth/signin"), 3000);
       }
     };
 

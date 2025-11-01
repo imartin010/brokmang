@@ -31,55 +31,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if user exists in sales_agents table
-    const { data: existingAgent } = await supabase
-      .from("sales_agents")
-      .select("id, user_id")
-      .eq("user_id", user_id)
-      .single();
-
-    let data;
-    let error;
-
-    if (existingAgent) {
-      // Update existing record
-      const result = await supabase
-        .from("sales_agents")
-        .update({ user_type })
-        .eq("user_id", user_id)
-        .select()
-        .single();
-      
-      data = result.data;
-      error = result.error;
-    } else {
-      // Create new record for new user
-      // Get user's email to create a default name
-      let defaultName = "New User";
-      try {
-        const { data: authUser } = await supabase.auth.admin.getUserById(user_id);
-        if (authUser?.user?.email) {
-          defaultName = authUser.user.email.split('@')[0];
-        }
-      } catch (e) {
-        console.error("Could not fetch user email:", e);
+    // Upsert into user_profiles table
+    let defaultName = "User";
+    try {
+      const { data: authUser } = await supabase.auth.admin.getUserById(user_id);
+      if (authUser?.user?.email) {
+        defaultName = authUser.user.email.split('@')[0];
       }
-      
-      const result = await supabase
-        .from("sales_agents")
-        .insert({
-          user_id,
-          full_name: defaultName, // Required field
-          role: 'agent', // Default role
-          is_active: true, // Required field
-          user_type: user_type as any, // Cast to handle enum type
-        })
-        .select()
-        .single();
-      
-      data = result.data;
-      error = result.error;
+    } catch (e) {
+      console.error("Could not fetch user email:", e);
     }
+
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .upsert({
+        user_id,
+        user_type,
+        full_name: defaultName,
+      }, {
+        onConflict: 'user_id'
+      })
+      .select()
+      .single();
 
     if (error) {
       console.error("Error setting user type:", error);
@@ -120,10 +93,10 @@ export async function GET(req: NextRequest) {
     }
 
     const { data, error } = await supabase
-      .from("sales_agents")
+      .from("user_profiles")
       .select("user_type")
       .eq("user_id", user_id)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error("Error fetching user type:", error);

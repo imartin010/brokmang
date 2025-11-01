@@ -6,7 +6,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { AuthSlice, createAuthSlice } from './authSlice';
-import { OrgSlice, createOrgSlice } from './orgSlice';
 import { OnboardingSlice, createOnboardingSlice } from './onboardingSlice';
 import { NotificationsSlice, createNotificationsSlice } from './notificationsSlice';
 import { ReportsSlice, createReportsSlice } from './reportsSlice';
@@ -14,7 +13,6 @@ import { InsightsSlice, createInsightsSlice } from './insightsSlice';
 
 // Combined store type
 export type BrokmangStore = AuthSlice & 
-  OrgSlice & 
   OnboardingSlice & 
   NotificationsSlice & 
   ReportsSlice & 
@@ -25,7 +23,6 @@ export const useBrokmangStore = create<BrokmangStore>()(
   persist(
     (...a) => ({
       ...createAuthSlice(...a),
-      ...createOrgSlice(...a),
       ...createOnboardingSlice(...a),
       ...createNotificationsSlice(...a),
       ...createReportsSlice(...a),
@@ -35,11 +32,7 @@ export const useBrokmangStore = create<BrokmangStore>()(
       name: 'brokmang-storage',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
-        // Only persist these keys
-        currentOrgId: state.currentOrgId,
-        currentOrgSlug: state.currentOrgSlug,
-        userRole: state.userRole,
-        organizations: state.organizations,
+        // Only persist these keys (no organization data)
       }),
     }
   )
@@ -50,34 +43,14 @@ export const useAuth = () => useBrokmangStore((state) => ({
   user: state.user,
   loading: state.loading,
   userAccountType: state.userAccountType,
-  currentOrgId: state.currentOrgId,
-  currentOrgSlug: state.currentOrgSlug,
-  userRole: state.userRole,
   setUser: state.setUser,
   setLoading: state.setLoading,
   setUserAccountType: state.setUserAccountType,
-  setCurrentOrg: state.setCurrentOrg,
-  clearCurrentOrg: state.clearCurrentOrg,
   signOut: state.signOut,
   isAuthenticated: state.isAuthenticated,
-  hasOrgContext: state.hasOrgContext,
   isCEO: state.isCEO,
   isTeamLeader: state.isTeamLeader,
   hasFinancialAccess: state.hasFinancialAccess,
-}));
-
-export const useOrg = () => useBrokmangStore((state) => ({
-  organizations: state.organizations,
-  currentOrg: state.currentOrg,
-  orgLoading: state.orgLoading,
-  setOrganizations: state.setOrganizations,
-  setCurrentOrgData: state.setCurrentOrgData,
-  addOrganization: state.addOrganization,
-  updateOrganization: state.updateOrganization,
-  removeOrganization: state.removeOrganization,
-  setOrgLoading: state.setOrgLoading,
-  getOrgById: state.getOrgById,
-  getOrgsByRole: state.getOrgsByRole,
 }));
 
 export const useOnboarding = () => useBrokmangStore((state) => ({

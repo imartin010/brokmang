@@ -29,17 +29,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verify admin has permission
-    const { data: membership } = await supabase
-      .from("memberships")
-      .select("role")
+    // Verify admin has permission (check if user is CEO or Admin)
+    const { data: adminProfile } = await supabase
+      .from("user_profiles")
+      .select("user_type")
       .eq("user_id", admin_user_id)
-      .in("role", ["owner", "admin"])
       .single();
 
-    if (!membership) {
+    if (!adminProfile || !['ceo', 'admin'].includes(adminProfile.user_type)) {
       return NextResponse.json(
-        { error: "Unauthorized. Only owners and admins can validate payments." },
+        { error: "Unauthorized. Only CEOs and Admins can validate payments." },
         { status: 403 }
       );
     }
@@ -100,16 +99,16 @@ export async function POST(req: NextRequest) {
 
       // Notify user - AI activated
       await supabase.from("notifications").insert({
-        org_id: subscription.org_id,
         user_id: subscription.user_id,
-        type: "subscription_activated",
+        type: "SYSTEM",
         title: "✅ AI Features Activated!",
         message: `Your payment has been validated. AI Smart Insights are now active for 31 days!`,
         action_url: "/insights",
-        metadata: {
+        payload: {
           subscription_id,
           start_date: start_date.toISOString(),
           end_date: end_date.toISOString(),
+          notification_subtype: "subscription_activated",
         },
       });
 
@@ -159,15 +158,15 @@ export async function POST(req: NextRequest) {
 
       // Notify user - payment rejected
       await supabase.from("notifications").insert({
-        org_id: subscription.org_id,
         user_id: subscription.user_id,
-        type: "subscription_rejected",
+        type: "SYSTEM",
         title: "❌ Payment Not Validated",
         message: admin_notes || "Your payment could not be validated. Please contact support or try again.",
         action_url: "/subscription",
-        metadata: {
+        payload: {
           subscription_id,
           reason: admin_notes,
+          notification_subtype: "subscription_rejected",
         },
       });
 

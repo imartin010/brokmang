@@ -22,13 +22,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Image from "next/image";
+import { supabase } from "@/lib/supabase-browser";
 
 interface SubscriptionPaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   userType: "ceo" | "team_leader";
   userId: string;
-  orgId?: string;
   onSuccess?: () => void;
 }
 
@@ -37,7 +37,6 @@ export function SubscriptionPaymentModal({
   onClose,
   userType,
   userId,
-  orgId,
   onSuccess,
 }: SubscriptionPaymentModalProps) {
   const [step, setStep] = useState<"payment" | "confirmation">("payment");
@@ -68,7 +67,20 @@ export function SubscriptionPaymentModal({
       return;
     }
 
-    if (!userId) {
+    // Get user ID - try from props first, then from session
+    let finalUserId = userId;
+    if (!finalUserId) {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.id) {
+          finalUserId = user.id;
+        }
+      } catch (error) {
+        console.error("Error getting user from session:", error);
+      }
+    }
+
+    if (!finalUserId) {
       setError("User ID is missing. Please refresh the page and try again.");
       return;
     }
@@ -82,18 +94,35 @@ export function SubscriptionPaymentModal({
     setError("");
 
     try {
-      // In production, upload screenshot to Supabase Storage
+      // Upload screenshot to Supabase Storage
       let uploadedScreenshotUrl = "";
       if (screenshotFile) {
-        // TODO: Upload to Supabase Storage
-        // For now, we'll skip file upload and just store the reference
-        uploadedScreenshotUrl = ""; // Replace with actual upload URL
+        const fileExt = screenshotFile.name.split('.').pop();
+        const fileName = `${finalUserId}/${Date.now()}.${fileExt}`;
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('payment-screenshots')
+          .upload(fileName, screenshotFile, {
+            cacheControl: '3600',
+            upsert: false
+          });
+        
+        if (uploadError) {
+          console.error('Screenshot upload error:', uploadError);
+          // Continue without screenshot URL
+        } else {
+          // Get public URL
+          const { data: urlData } = supabase.storage
+            .from('payment-screenshots')
+            .getPublicUrl(fileName);
+          
+          uploadedScreenshotUrl = urlData.publicUrl;
+        }
       }
 
       // Create subscription request
       const payload = {
-        user_id: userId,
-        org_id: orgId,
+        user_id: finalUserId,
         user_type: userType,
         payment_reference: paymentReference || "",
         payment_screenshot_url: uploadedScreenshotUrl,
