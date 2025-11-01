@@ -39,7 +39,23 @@ import { useAuth } from "@/lib/zustand/store";
 export default function AnalyzePage() {
   const router = useRouter();
   const { hasFinancialAccess, userAccountType } = useAuth();
-  const [inputs, setInputs] = useState<Inputs>(DEFAULT_INPUTS);
+  const [inputs, setInputs] = useState<Inputs>({
+    agents: 0,
+    team_leaders: 0,
+    rent: 0,
+    salary: 0,
+    team_leader_share: 0,
+    others: 0,
+    marketing: 0,
+    sim: 0,
+    franchise_owner_salary: 0,
+    gross_rate: 0.04,
+    agent_comm_per_1m: 0,
+    tl_comm_per_1m: 0,
+    withholding: 0.05,
+    vat: 0.14,
+    income_tax: 0.10,
+  });
   const [results, setResults] = useState<Results | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -371,9 +387,9 @@ export default function AnalyzePage() {
                 <Input
                   id="agents"
                   type="number"
-                  value={inputs.agents}
+                  value={inputs.agents || ""}
                   onChange={(e) => handleInputChange("agents", e.target.value)}
-                  onFocus={handleFocus}
+                  placeholder="e.g., 10"
                   className={errors.agents ? "border-red-500" : ""}
                 />
                 {errors.agents && (
@@ -385,11 +401,11 @@ export default function AnalyzePage() {
                 <Input
                   id="team_leaders"
                   type="number"
-                  value={inputs.team_leaders}
+                  value={inputs.team_leaders || ""}
                   onChange={(e) =>
                     handleInputChange("team_leaders", e.target.value)
                   }
-                  onFocus={handleFocus}
+                  placeholder="e.g., 2"
                   className={errors.team_leaders ? "border-red-500" : ""}
                 />
                 {errors.team_leaders && (
@@ -438,11 +454,10 @@ export default function AnalyzePage() {
                     <Input
                       id="rent"
                       type="number"
-                      value={inputs.rent}
+                      value={inputs.rent || ""}
                       onChange={(e) => handleInputChange("rent", e.target.value)}
-                      onFocus={handleFocus}
                       className={errors.rent ? "border-red-500" : ""}
-                      placeholder="Enter rent per agent"
+                      placeholder="e.g., 5000"
                     />
                     {errors.rent && (
                       <p className="text-xs text-red-500 mt-1">{errors.rent}</p>
@@ -460,10 +475,9 @@ export default function AnalyzePage() {
                       <Input
                         id="totalRent"
                         type="number"
-                        value={totalOfficeRent}
+                        value={totalOfficeRent || ""}
                         onChange={(e) => setTotalOfficeRent(parseFloat(e.target.value) || 0)}
-                        onFocus={(e) => e.target.select()}
-                        placeholder="Enter total office rent"
+                        placeholder="e.g., 50000"
                         className="mt-1"
                       />
                       <p className="text-xs text-muted-foreground mt-1">
@@ -495,22 +509,22 @@ export default function AnalyzePage() {
 
               {/* Other Cost Fields */}
               {[
-                { key: "salary", label: "Salary" },
-                { key: "team_leader_share", label: "Team Leader Share" },
-                { key: "others", label: "Other Costs" },
-                { key: "marketing", label: "Marketing" },
-                { key: "sim", label: "SIM Card" },
-              ].map(({ key, label }) => (
+                { key: "salary", label: "Salary", placeholder: "e.g., 5000" },
+                { key: "team_leader_share", label: "Team Leader Share", placeholder: "e.g., 0.15" },
+                { key: "others", label: "Other Costs", placeholder: "e.g., 3000" },
+                { key: "marketing", label: "Marketing", placeholder: "e.g., 5000" },
+                { key: "sim", label: "SIM Card", placeholder: "e.g., 1000" },
+              ].map(({ key, label, placeholder }) => (
                 <div key={key}>
                   <Label htmlFor={key}>{label}</Label>
                   <Input
                     id={key}
                     type="number"
-                    value={inputs[key as keyof Inputs]}
+                    value={inputs[key as keyof Inputs] || ""}
                     onChange={(e) =>
                       handleInputChange(key as keyof Inputs, e.target.value)
                     }
-                    onFocus={handleFocus}
+                    placeholder={placeholder}
                     className={
                       errors[key as keyof Inputs] ? "border-red-500" : ""
                     }
@@ -540,11 +554,11 @@ export default function AnalyzePage() {
                 <Input
                   id="franchise_owner_salary"
                   type="number"
-                  value={inputs.franchise_owner_salary}
+                  value={inputs.franchise_owner_salary || ""}
                   onChange={(e) =>
                     handleInputChange("franchise_owner_salary", e.target.value)
                   }
-                  onFocus={handleFocus}
+                  placeholder="e.g., 15000"
                   className={
                     errors.franchise_owner_salary ? "border-red-500" : ""
                   }
@@ -605,11 +619,11 @@ export default function AnalyzePage() {
                 <Input
                   id="agent_comm_per_1m"
                   type="number"
-                  value={inputs.agent_comm_per_1m}
+                  value={inputs.agent_comm_per_1m || ""}
                   onChange={(e) =>
                     handleInputChange("agent_comm_per_1m", e.target.value)
                   }
-                  onFocus={handleFocus}
+                  placeholder="e.g., 5000"
                 />
               </div>
               <div>
@@ -619,11 +633,11 @@ export default function AnalyzePage() {
                 <Input
                   id="tl_comm_per_1m"
                   type="number"
-                  value={inputs.tl_comm_per_1m}
+                  value={inputs.tl_comm_per_1m || ""}
                   onChange={(e) =>
                     handleInputChange("tl_comm_per_1m", e.target.value)
                   }
-                  onFocus={handleFocus}
+                  placeholder="e.g., 2500"
                 />
               </div>
               <div>

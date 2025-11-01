@@ -46,36 +46,92 @@ export default function AdminLayout({
 
   useEffect(() => {
     const checkAccess = async () => {
+      // Add timeout to prevent infinite loading
+      const timeoutId = setTimeout(() => {
+        console.warn("[Admin Layout] Access check timeout, stopping loading");
+        setLoading(false);
+        setAuthorized(false);
+      }, 10000); // 10 second timeout
+
       try {
-        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        // Get user with timeout
+        let currentUser: any = null;
+        let authError: any = null;
         
-        if (!currentUser) {
+        try {
+          const getUserPromise = supabase.auth.getUser();
+          const getUserTimeout = new Promise<{ data: { user: null }, error: Error }>((resolve) => 
+            setTimeout(() => resolve({ data: { user: null }, error: new Error("getUser timeout") }), 5000)
+          );
+          
+          const result = await Promise.race([getUserPromise, getUserTimeout]);
+          currentUser = result.data?.user;
+          authError = result.error;
+        } catch (error: any) {
+          authError = error;
+        }
+        
+        if (authError || !currentUser) {
+          clearTimeout(timeoutId);
+          console.error("[Admin Layout] No user found:", authError);
           router.push("/auth/signin");
+          setLoading(false);
           return;
         }
 
         setUser(currentUser);
 
-        // Check if user is admin
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("user_type")
-          .eq("user_id", currentUser.id)
-          .maybeSingle();
+        // Check if user is admin with timeout
+        let profile: any = null;
+        let profileError: any = null;
+        
+        try {
+          const profilePromise = supabase
+            .from("user_profiles")
+            .select("user_type")
+            .eq("user_id", currentUser.id)
+            .maybeSingle();
+          
+          const profileTimeout = new Promise<{ data: null, error: Error }>((resolve) =>
+            setTimeout(() => resolve({ data: null, error: new Error("Profile query timeout") }), 5000)
+          );
 
-        if (profile?.user_type !== "admin") {
+          const result = await Promise.race([profilePromise, profileTimeout]);
+          profile = result.data;
+          profileError = result.error;
+        } catch (error: any) {
+          profileError = error;
+        }
+
+        if (profileError) {
+          console.error("[Admin Layout] Error fetching profile:", profileError);
+          clearTimeout(timeoutId);
           setAuthorized(false);
           setLoading(false);
           return;
         }
 
+        if (profile?.user_type !== "admin") {
+          clearTimeout(timeoutId);
+          setAuthorized(false);
+          setLoading(false);
+          return;
+        }
+
+        clearTimeout(timeoutId);
         setUserAccountType("admin");
         setAuthorized(true);
-      } catch (error) {
-        console.error("Access check failed:", error);
-        router.push("/auth/signin");
-      } finally {
         setLoading(false);
+      } catch (error: any) {
+        clearTimeout(timeoutId);
+        console.error("[Admin Layout] Access check failed:", error);
+        setAuthorized(false);
+        setLoading(false);
+        
+        // Only redirect if it's not a timeout error
+        if (!error.message?.includes("timeout")) {
+          router.push("/auth/signin");
+        }
       }
     };
 

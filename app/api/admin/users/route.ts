@@ -12,11 +12,10 @@ export async function GET(request: NextRequest) {
     // Await cookies() - required in Next.js 15
     const cookieStore = await cookies();
     
-    // Pre-read all cookies into a Map to avoid sync access issues
-    const cookieMap = new Map<string, string>();
-    cookieStore.getAll().forEach((cookie) => {
-      cookieMap.set(cookie.name, cookie.value);
-    });
+    // Debug: Log cookie names being read
+    const allCookies = cookieStore.getAll();
+    const supabaseCookies = allCookies.filter(c => c.name.includes('sb-') || c.name.includes('supabase'));
+    console.log("[Admin Users API] Found Supabase cookies:", supabaseCookies.map(c => c.name));
     
     // Create Supabase client with cookies
     const supabase = createServerClient(
@@ -25,26 +24,82 @@ export async function GET(request: NextRequest) {
       {
         cookies: {
           get(name: string) {
-            return cookieMap.get(name) || undefined;
+            const value = cookieStore.get(name)?.value;
+            if (name.includes('auth-token')) {
+              console.log(`[Admin Users API] Reading cookie ${name}: ${value ? 'exists' : 'missing'}`);
+            }
+            return value;
+          },
+          set(name: string, value: string, options: any) {
+            try {
+              cookieStore.set(name, value, options);
+            } catch (error) {
+              // Cookie setting in route handlers is read-only, that's OK
+            }
+          },
+          remove(name: string, options: any) {
+            try {
+              cookieStore.set(name, '', options);
+            } catch (error) {
+              // Cookie removal in route handlers is read-only, that's OK
+            }
           },
         },
       }
     );
     
-    // Check if current user is admin
+    // Get current user
     const {
       data: { user },
+      error: authError,
     } = await supabase.auth.getUser();
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    console.log("[Admin Users API] getUser result:", {
+      hasUser: !!user,
+      userId: user?.id,
+      userEmail: user?.email,
+      error: authError?.message,
+    });
+
+    if (authError || !user) {
+      console.error("[Admin Users API] Auth error:", {
+        error: authError,
+        message: authError?.message,
+        status: authError?.status,
+      });
+      return NextResponse.json({ 
+        error: "Unauthorized - Please sign in",
+        details: authError?.message || "No user found"
+      }, { status: 401 });
     }
 
-    const { data: adminProfile } = await supabase
+    // Use service role to check admin status (bypasses RLS)
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabaseService = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
+
+    // Check if user is admin using service role (bypasses RLS)
+    const { data: adminProfile, error: profileError } = await supabaseService
       .from("user_profiles")
       .select("user_type")
       .eq("user_id", user.id)
       .maybeSingle();
+
+    if (profileError) {
+      console.error("[Admin Users API] Error checking admin status:", profileError);
+      return NextResponse.json(
+        { error: "Failed to verify admin access" },
+        { status: 500 }
+      );
+    }
 
     if (adminProfile?.user_type !== "admin") {
       return NextResponse.json(
@@ -57,18 +112,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const filterType = searchParams.get("filter") || "all";
 
-    // Create service role client to bypass RLS
-    const { createClient } = await import("@supabase/supabase-js");
-    const supabaseService = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    // Use existing service role client (already created above)
     
     let query = supabaseService
       .from("user_profiles")
@@ -107,7 +151,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ users: enriched });
   } catch (error: any) {
-    console.error("Error fetching users:", error);
+    console.error("[Admin Users API] Error fetching users:", error);
     return NextResponse.json(
       { error: error.message || "Internal server error" },
       { status: 500 }

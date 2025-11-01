@@ -56,21 +56,42 @@ export default function AdminDashboardPage() {
     try {
       setLoading(true);
 
-      // Load total users
-      const { count: userCount } = await supabase
-        .from("user_profiles")
-        .select("*", { count: "exact", head: true });
+      // Initialize stats with defaults
+      let userCount = 0;
+      let agentCount = 0;
+      let subscriptions: any[] = [];
+      let profiles: any[] = [];
 
-      // Load total agents
-      const { count: agentCount } = await supabase
-        .from("sales_agents")
-        .select("*", { count: "exact", head: true });
+      // Load total users with error handling
+      try {
+        const { count } = await supabase
+          .from("user_profiles")
+          .select("*", { count: "exact", head: true });
+        userCount = count || 0;
+      } catch (error) {
+        console.error("[Admin Dashboard] Error loading users:", error);
+      }
 
-      // Load subscriptions
-      const { data: subscriptions } = await supabase
-        .from("subscriptions")
-        .select("*")
-        .order("created_at", { ascending: false });
+      // Load total agents with error handling
+      try {
+        const { count } = await supabase
+          .from("sales_agents")
+          .select("*", { count: "exact", head: true });
+        agentCount = count || 0;
+      } catch (error) {
+        console.error("[Admin Dashboard] Error loading agents:", error);
+      }
+
+      // Load subscriptions with error handling
+      try {
+        const { data } = await supabase
+          .from("subscriptions")
+          .select("*")
+          .order("created_at", { ascending: false });
+        subscriptions = data || [];
+      } catch (error) {
+        console.error("[Admin Dashboard] Error loading subscriptions:", error);
+      }
 
       const activeSubscriptions = subscriptions?.filter(
         (s) => s.status === "active"
@@ -88,10 +109,18 @@ export default function AdminDashboardPage() {
       // Load recent subscriptions with user info
       const recentSubs = subscriptions?.slice(0, 5) || [];
       const userIds = [...new Set(recentSubs.map((s) => s.user_id))];
-      const { data: profiles } = await supabase
-        .from("user_profiles")
-        .select("user_id, full_name")
-        .in("user_id", userIds);
+      
+      if (userIds.length > 0) {
+        try {
+          const { data } = await supabase
+            .from("user_profiles")
+            .select("user_id, full_name")
+            .in("user_id", userIds);
+          profiles = data || [];
+        } catch (error) {
+          console.error("[Admin Dashboard] Error loading profiles:", error);
+        }
+      }
 
       const enrichedSubs = recentSubs.map((sub) => {
         const profile = profiles?.find((p) => p.user_id === sub.user_id);
@@ -102,15 +131,24 @@ export default function AdminDashboardPage() {
       });
 
       setStats({
-        totalUsers: userCount || 0,
-        totalAgents: agentCount || 0,
+        totalUsers: userCount,
+        totalAgents: agentCount,
         activeSubscriptions,
         pendingSubscriptions,
         totalRevenue,
         recentSubscriptions: enrichedSubs,
       });
     } catch (error) {
-      console.error("Failed to load dashboard data:", error);
+      console.error("[Admin Dashboard] Failed to load dashboard data:", error);
+      // Set default stats on error to prevent stuck loading
+      setStats({
+        totalUsers: 0,
+        totalAgents: 0,
+        activeSubscriptions: 0,
+        pendingSubscriptions: 0,
+        totalRevenue: 0,
+        recentSubscriptions: [],
+      });
     } finally {
       setLoading(false);
     }

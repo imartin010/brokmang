@@ -57,19 +57,37 @@ export default function AdminUsersPage() {
       setLoading(true);
       setError(null);
 
+      // Add timeout to prevent infinite loading
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
       // Use API route to fetch all users (bypasses RLS using service role)
-      const response = await fetch(`/api/admin/users?filter=${filterType}`);
+      const response = await fetch(`/api/admin/users?filter=${filterType}`, {
+        credentials: 'include', // Include cookies in the request
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
       
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({
+          error: `HTTP ${response.status}: ${response.statusText}`,
+        }));
         throw new Error(errorData.error || "Failed to load users");
       }
 
       const { users } = await response.json();
       setUsers(users || []);
-    } catch (error) {
+    } catch (error: any) {
       console.error("[Admin Users] Failed to load users:", error);
-      setError(error instanceof Error ? error.message : "Failed to load users");
+      
+      // Handle timeout errors
+      if (error.name === 'AbortError') {
+        setError("Request timed out. Please check your connection and try again.");
+      } else {
+        setError(error instanceof Error ? error.message : "Failed to load users");
+      }
+      
       setUsers([]);
     } finally {
       setLoading(false);
@@ -91,9 +109,15 @@ export default function AdminUsersPage() {
 
     try {
       setChangingUser(userId);
+      setError(null); // Clear previous errors
+
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
       const response = await fetch("/api/admin/change-user-type", {
         method: "POST",
+        credentials: 'include', // Include cookies in the request
         headers: {
           "Content-Type": "application/json",
         },
@@ -101,7 +125,10 @@ export default function AdminUsersPage() {
           user_id: userId,
           new_user_type: newType,
         }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       const data = await response.json();
 
@@ -113,7 +140,13 @@ export default function AdminUsersPage() {
       await loadUsers();
     } catch (error: any) {
       console.error("[Admin Users] Error changing user type:", error);
-      setError(error.message || "Failed to change user type");
+      
+      // Handle timeout errors
+      if (error.name === 'AbortError') {
+        setError("Request timed out. Please try again.");
+      } else {
+        setError(error.message || "Failed to change user type");
+      }
     } finally {
       setChangingUser(null);
     }

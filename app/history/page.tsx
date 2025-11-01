@@ -20,41 +20,61 @@ export default function HistoryPage() {
   const [user, setUser] = useState<any>(null);
   const [checkingAccess, setCheckingAccess] = useState(true);
 
-  const loadRecords = async () => {
+  const loadRecords = async (userId: string) => {
     try {
       setLoading(true);
-      if (!user) return;
-      
-      // Get user's org_id if available
-      const { data: membership } = await supabase
-        .from("memberships")
-        .select("org_id")
-        .eq("user_id", user.id)
-        .limit(1)
-        .maybeSingle();
-      
-      // Load records with org_id filter if available, otherwise filter by user_id
-      let query = supabase
-        .from("break_even_records")
-        .select("*");
-      
-      if (membership?.org_id) {
-        query = query.eq("org_id", membership.org_id);
-      } else {
-        query = query.eq("user_id", user.id);
+      if (!userId) {
+        setRecords([]);
+        setLoading(false);
+        return;
       }
       
-      const { data, error } = await query
+      // Query records by user_id (org_id removed)
+      const { data, error } = await supabase
+        .from("break_even_records")
+        .select("*")
+        .eq("user_id", userId)
         .order("created_at", { ascending: false });
 
       if (error) {
         console.error("[History] Error loading records:", error);
-        throw error;
+        setError(error.message || "Failed to load history");
+        setRecords([]);
+        return;
       }
+      
       setRecords(data || []);
       setError(null);
     } catch (error: any) {
       console.error("[History] Failed to load records:", error);
+      setError(error.message || "Failed to load history");
+      setRecords([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadAllRecords = async () => {
+    try {
+      setLoading(true);
+      
+      // Query all records (for admin users)
+      const { data, error } = await supabase
+        .from("break_even_records")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("[History] Error loading all records:", error);
+        setError(error.message || "Failed to load history");
+        setRecords([]);
+        return;
+      }
+      
+      setRecords(data || []);
+      setError(null);
+    } catch (error: any) {
+      console.error("[History] Failed to load all records:", error);
       setError(error.message || "Failed to load history");
       setRecords([]);
     } finally {
@@ -82,9 +102,14 @@ export default function HistoryPage() {
         
       setCheckingAccess(false);
       
-      // Load records only if CEO
+      // Load records only if CEO or admin (not team leader)
       if (data?.user_type !== "team_leader") {
-        loadRecords();
+        // If admin, load all records; otherwise load only user's records
+        if (data?.user_type === "admin") {
+          await loadAllRecords();
+        } else {
+          await loadRecords(user.id);
+        }
       }
     };
 
