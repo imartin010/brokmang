@@ -16,6 +16,7 @@ export default function HistoryPage() {
   const { hasFinancialAccess, userAccountType } = useAuth();
   const [records, setRecords] = useState<BreakEvenRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
   const [checkingAccess, setCheckingAccess] = useState(true);
 
@@ -46,11 +47,16 @@ export default function HistoryPage() {
       const { data, error } = await query
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("[History] Error loading records:", error);
+        throw error;
+      }
       setRecords(data || []);
-    } catch (error) {
-      console.error("Error loading records:", error);
-      alert("Failed to load history");
+      setError(null);
+    } catch (error: any) {
+      console.error("[History] Failed to load records:", error);
+      setError(error.message || "Failed to load history");
+      setRecords([]);
     } finally {
       setLoading(false);
     }
@@ -145,11 +151,15 @@ export default function HistoryPage() {
         .delete()
         .eq("id", id);
 
-      if (error) throw error;
+      if (error) {
+        console.error("[History] Error deleting record:", error);
+        throw error;
+      }
       setRecords(records.filter((r) => r.id !== id));
-    } catch (error) {
-      console.error("Error deleting record:", error);
-      alert("Failed to delete scenario");
+      setError(null);
+    } catch (error: any) {
+      console.error("[History] Failed to delete scenario:", error);
+      setError(error.message || "Failed to delete scenario");
     }
   };
 
@@ -202,6 +212,18 @@ export default function HistoryPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Error Display */}
+      {error && (
+        <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400">
+          <p className="font-medium">Error: {error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="mt-2 text-sm underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}

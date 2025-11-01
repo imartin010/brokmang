@@ -44,6 +44,8 @@ export default function AnalyzePage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
   const [usePerAgentRent, setUsePerAgentRent] = useState(true);
   const [totalOfficeRent, setTotalOfficeRent] = useState(0);
@@ -218,9 +220,11 @@ export default function AnalyzePage() {
 
       const data = await response.json();
       setResults(data);
-    } catch (error) {
-      console.error("Error calculating:", error);
-      alert("Failed to calculate. Please try again.");
+      setError(null);
+    } catch (error: any) {
+      console.error("[Analyze] Error calculating:", error);
+      setError(error.message || "Failed to calculate. Please try again.");
+      setResults(null);
     } finally {
       setLoading(false);
     }
@@ -228,13 +232,13 @@ export default function AnalyzePage() {
 
   const handleSave = async () => {
     if (!user) {
-      alert("Please sign in to save scenarios");
+      setError("Please sign in to save scenarios");
       router.push("/auth/signin");
       return;
     }
 
     if (!results) {
-      alert("Please calculate first");
+      setError("Please calculate first");
       return;
     }
 
@@ -274,16 +278,18 @@ export default function AnalyzePage() {
         throw new Error("No data returned from insert");
       }
 
-      alert("✅ Scenario saved successfully!");
+      setSuccessMessage("✅ Scenario saved successfully!");
+      setError(null);
       
       // Redirect to history page to see the saved data
       setTimeout(() => {
         router.push("/history");
       }, 500);
     } catch (error: any) {
-      console.error("Error saving:", error);
+      console.error("[Analyze] Error saving:", error);
       const errorMessage = error?.message || error?.toString() || "Unknown error occurred";
-      alert(`❌ Failed to save scenario: ${errorMessage}`);
+      setError(`❌ Failed to save scenario: ${errorMessage}`);
+      setSuccessMessage(null);
     } finally {
       setSaving(false);
     }
@@ -308,6 +314,34 @@ export default function AnalyzePage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
+      {/* Error Message */}
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400"
+        >
+          <p className="font-medium">{error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="mt-2 text-sm underline"
+          >
+            Dismiss
+          </button>
+        </motion.div>
+      )}
+
+      {/* Success Message */}
+      {successMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 p-4 rounded-lg bg-green-500/10 border border-green-500/20 text-green-600 dark:text-green-400"
+        >
+          <p className="font-medium">{successMessage}</p>
+        </motion.div>
+      )}
+
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}

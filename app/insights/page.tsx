@@ -341,7 +341,7 @@ export default function InsightsPage() {
                         // Try to get user from session directly
                         const { data: { user: sessionUser } } = await supabase.auth.getUser();
                         if (!sessionUser) {
-                          alert("Please sign in to subscribe.");
+                          setError("Please sign in to subscribe.");
                           return;
                         }
                         currentUser = sessionUser;
@@ -407,7 +407,9 @@ export default function InsightsPage() {
           userType={(userAccountType || 'team_leader') as "ceo" | "team_leader"}
           userId={user?.id || ""} // Will be fetched by modal if empty
           onSuccess={() => {
-            checkSubscription();
+            if (currentUserId) {
+              checkSubscription(currentUserId);
+            }
           }}
         />
       </>
