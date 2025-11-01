@@ -15,7 +15,7 @@ export async function setUserRole(formData: FormData) {
     return { ok: false, error: 'Invalid role' };
   }
 
-  const supabase = createSupabaseServer();
+  const supabase = await createSupabaseServer();
   const { data: { user }, error: authErr } = await supabase.auth.getUser();
   
   if (authErr || !user) {

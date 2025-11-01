@@ -43,25 +43,42 @@ export default function TeamLeaderDashboard() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.error('[Team Leader Dashboard] Auth error:', authError);
+        return;
+      }
+      
+      if (!user) {
+        console.error('[Team Leader Dashboard] No user found');
+        return;
+      }
 
       // Get active team members count
-      const { count: teamCount } = await supabase
+      const { count: teamCount, error: agentsError } = await supabase
         .from('sales_agents')
         .select('*', { count: 'exact', head: true })
         .eq('is_active', true);
+
+      if (agentsError) {
+        console.error('[Team Leader Dashboard] Error fetching agents:', agentsError);
+      }
 
       // Get current month scores for team score calculation
       const now = new Date();
       const currentMonth = now.getMonth() + 1;
       const currentYear = now.getFullYear();
       
-      const { data: currentScores } = await supabase
+      const { data: currentScores, error: scoresError } = await supabase
         .from('agent_monthly_scores')
         .select('score, agent_id')
         .eq('year', currentYear)
         .eq('month', currentMonth);
+
+      if (scoresError) {
+        console.error('[Team Leader Dashboard] Error fetching monthly scores:', scoresError);
+      }
 
       // Calculate average team score
       const avgScore = currentScores && currentScores.length > 0
@@ -73,13 +90,15 @@ export default function TeamLeaderDashboard() {
       if (currentScores && currentScores.length > 0) {
         const sorted = [...currentScores].sort((a, b) => (b.score || 0) - (a.score || 0));
         if (sorted[0]) {
-          const { data: agent } = await supabase
+          const { data: agent, error: agentError } = await supabase
             .from('sales_agents')
             .select('full_name')
             .eq('id', sorted[0].agent_id)
             .maybeSingle();
           
-          if (agent) {
+          if (agentError) {
+            console.error('[Team Leader Dashboard] Error fetching top performer:', agentError);
+          } else if (agent) {
             topPerformer = {
               name: agent.full_name || 'Unknown',
               score: sorted[0].score || 0,
@@ -97,8 +116,9 @@ export default function TeamLeaderDashboard() {
 
       // Clear priorities for now (can be populated from actual tasks)
       setPriorities([]);
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
+    } catch (error: any) {
+      console.error('[Team Leader Dashboard] Unexpected error loading dashboard data:', error);
+      // Don't show alert - just log the error
     } finally {
       setLoading(false);
     }

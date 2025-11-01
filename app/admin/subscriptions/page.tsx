@@ -1,6 +1,6 @@
 /**
- * Admin Subscriptions Page
- * View and validate pending subscription payments
+ * Admin Subscriptions Management Page
+ * View and validate subscription payments
  */
 
 "use client";
@@ -18,10 +18,12 @@ import {
   Loader2,
   RefreshCw,
   Eye,
+  Search,
+  Filter,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-// import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/zustand/store";
 import { supabase } from "@/lib/supabase-browser";
@@ -30,8 +32,6 @@ import { formatDistanceToNow } from "date-fns";
 interface Subscription {
   id: string;
   user_id: string;
-  org_id: string | null;
-  user_type: string;
   status: string;
   amount_egp: number;
   payment_reference: string | null;
@@ -39,64 +39,35 @@ interface Subscription {
   payment_submitted_at: string;
   admin_notes: string | null;
   created_at: string;
-  // User info
+  start_date: string | null;
+  end_date: string | null;
   user_email?: string;
   user_name?: string;
 }
 
 export default function AdminSubscriptionsPage() {
-  const { user, setUser, userAccountType, setUserAccountType } = useAuth();
+  const { user } = useAuth();
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSubscription, setSelectedSubscription] = useState<Subscription | null>(null);
   const [adminNotes, setAdminNotes] = useState("");
   const [validating, setValidating] = useState(false);
   const [filter, setFilter] = useState<"all" | "pending" | "active" | "cancelled">("pending");
-
-  // Initialize user from Supabase
-  useEffect(() => {
-    const initUser = async () => {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      if (currentUser) {
-        setUser(currentUser);
-        
-        // Fetch user account type
-        const { data } = await supabase
-          .from('user_profiles')
-          .select('user_type')
-          .eq('user_id', currentUser.id)
-          .maybeSingle();
-        
-        if (data?.user_type) {
-          setUserAccountType(data.user_type as 'ceo' | 'team_leader' | 'admin');
-        }
-      }
-    };
-    
-    initUser();
-  }, [setUser, setUserAccountType]);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    if (user && userAccountType) {
-      loadSubscriptions();
-    }
-  }, [user, userAccountType, filter]);
+    loadSubscriptions();
+  }, [filter]);
 
   const loadSubscriptions = async () => {
     try {
       setLoading(true);
-      
-      // Check if user is CEO or Admin (only CEOs and Admins can validate payments)
-      if (!['ceo', 'admin'].includes(userAccountType || '')) {
-        return;
-      }
 
       let query = supabase
         .from("subscriptions")
         .select("*")
         .order("created_at", { ascending: false });
 
-      // Filter by status
       if (filter === "pending") {
         query = query.eq("status", "pending_payment");
       } else if (filter === "active") {
@@ -109,7 +80,6 @@ export default function AdminSubscriptionsPage() {
 
       if (error) throw error;
 
-      // Enrich with user info from user_profiles
       if (data) {
         const userIds = [...new Set(data.map((s) => s.user_id))];
         const { data: profiles } = await supabase
@@ -121,7 +91,7 @@ export default function AdminSubscriptionsPage() {
           const profile = profiles?.find((p) => p.user_id === sub.user_id);
           return {
             ...sub,
-            user_email: `User ${sub.user_id.slice(0, 8)}`, // Fallback since we can't get email client-side
+            user_email: `User ${sub.user_id.slice(0, 8)}`,
             user_name: profile?.full_name || "User",
           };
         });
@@ -157,7 +127,6 @@ export default function AdminSubscriptionsPage() {
         throw new Error(error.error || "Validation failed");
       }
 
-      // Reload subscriptions
       await loadSubscriptions();
       setSelectedSubscription(null);
       setAdminNotes("");
@@ -168,93 +137,140 @@ export default function AdminSubscriptionsPage() {
     }
   };
 
-  // Check permissions - CEOs and Admins can validate payments
-  const canValidate = ['ceo', 'admin'].includes(userAccountType || '');
-
-  if (!user) {
+  const filteredSubscriptions = subscriptions.filter((sub) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
     return (
-      <div className="container mx-auto px-4 py-8 min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
+      sub.user_name?.toLowerCase().includes(query) ||
+      sub.user_id.toLowerCase().includes(query) ||
+      sub.payment_reference?.toLowerCase().includes(query)
+    );
+  });
+
+  const pendingCount = subscriptions.filter((s) => s.status === "pending_payment").length;
+  const activeCount = subscriptions.filter((s) => s.status === "active").length;
+  const totalRevenue = subscriptions
+    .filter((s) => s.status === "active")
+    .reduce((sum, s) => sum + (s.amount_egp || 0), 0);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
-  if (!canValidate) {
-    return (
-      <div className="container mx-auto px-4 py-8 min-h-screen flex items-center justify-center">
-        <Card className="max-w-md">
-          <CardContent className="p-8 text-center">
-            <AlertCircle className="h-16 w-16 text-amber-600 mx-auto mb-4" />
-            <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
-            <p className="text-muted-foreground">
-              Only CEOs and Admins can validate subscription payments.
-            </p>
+  return (
+    <div>
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold mb-2">Subscription Management</h1>
+        <p className="text-muted-foreground">
+          View and validate subscription payments
+        </p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Pending Payments</p>
+                <p className="text-2xl font-bold">{pendingCount}</p>
+              </div>
+              <Clock className="h-8 w-8 text-amber-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Active Subscriptions</p>
+                <p className="text-2xl font-bold">{activeCount}</p>
+              </div>
+              <CheckCircle className="h-8 w-8 text-green-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Revenue</p>
+                <p className="text-2xl font-bold">{totalRevenue.toLocaleString()} EGP</p>
+              </div>
+              <DollarSign className="h-8 w-8 text-purple-600" />
+            </div>
           </CardContent>
         </Card>
       </div>
-    );
-  }
 
-  const pendingCount = subscriptions.filter((s) => s.status === "pending_payment").length;
+      {/* Filters */}
+      <Card className="mb-6">
+        <CardContent className="p-4">
+          <div className="flex gap-4 items-center flex-wrap">
+            <div className="flex-1 min-w-[200px]">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search subscriptions..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant={filter === "all" ? "default" : "outline"}
+                onClick={() => setFilter("all")}
+              >
+                All
+              </Button>
+              <Button
+                variant={filter === "pending" ? "default" : "outline"}
+                onClick={() => setFilter("pending")}
+                className="relative"
+              >
+                Pending
+                {pendingCount > 0 && (
+                  <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
+                    {pendingCount}
+                  </span>
+                )}
+              </Button>
+              <Button
+                variant={filter === "active" ? "default" : "outline"}
+                onClick={() => setFilter("active")}
+              >
+                Active
+              </Button>
+              <Button
+                variant={filter === "cancelled" ? "default" : "outline"}
+                onClick={() => setFilter("cancelled")}
+              >
+                Cancelled
+              </Button>
+              <Button variant="ghost" size="icon" onClick={loadSubscriptions}>
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
-  return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl">
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2">Subscription Management</h1>
-        <p className="text-muted-foreground">View and validate subscription payments</p>
-      </div>
-
-      {/* Filter Tabs */}
-      <div className="flex gap-2 mb-6 flex-wrap">
-        <Button
-          variant={filter === "all" ? "default" : "outline"}
-          onClick={() => setFilter("all")}
-        >
-          All
-        </Button>
-        <Button
-          variant={filter === "pending" ? "default" : "outline"}
-          onClick={() => setFilter("pending")}
-          className="relative"
-        >
-          Pending
-          {pendingCount > 0 && (
-            <span className="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
-              {pendingCount}
-            </span>
-          )}
-        </Button>
-        <Button
-          variant={filter === "active" ? "default" : "outline"}
-          onClick={() => setFilter("active")}
-        >
-          Active
-        </Button>
-        <Button
-          variant={filter === "cancelled" ? "default" : "outline"}
-          onClick={() => setFilter("cancelled")}
-        >
-          Cancelled
-        </Button>
-        <Button variant="ghost" size="icon" onClick={loadSubscriptions}>
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-      </div>
-
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        </div>
-      ) : subscriptions.length === 0 ? (
+      {/* Subscriptions List */}
+      {filteredSubscriptions.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">
             <Clock className="h-16 w-16 text-muted-foreground mx-auto mb-4 opacity-50" />
             <h3 className="text-xl font-semibold mb-2">No Subscriptions Found</h3>
             <p className="text-muted-foreground">
-              {filter === "pending"
+              {searchQuery
+                ? "Try adjusting your search query"
+                : filter === "pending"
                 ? "No pending payments to validate."
                 : "No subscriptions match this filter."}
             </p>
@@ -262,7 +278,7 @@ export default function AdminSubscriptionsPage() {
         </Card>
       ) : (
         <div className="grid gap-4">
-          {subscriptions.map((subscription) => (
+          {filteredSubscriptions.map((subscription) => (
             <motion.div
               key={subscription.id}
               initial={{ opacity: 0, y: 20 }}
@@ -290,9 +306,6 @@ export default function AdminSubscriptionsPage() {
                           }`}
                         />
                         <h3 className="text-xl font-bold">{subscription.user_name}</h3>
-                        <span className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full capitalize">
-                          {subscription.user_type.replace("_", " ")}
-                        </span>
                         <span
                           className={`px-2 py-1 text-xs rounded-full capitalize ${
                             subscription.status === "pending_payment"
@@ -329,19 +342,17 @@ export default function AdminSubscriptionsPage() {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedSubscription(subscription);
-                        }}
-                      >
-                        <Eye className="h-4 w-4 mr-2" />
-                        Review
-                      </Button>
-                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedSubscription(subscription);
+                      }}
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      Review
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -370,11 +381,8 @@ export default function AdminSubscriptionsPage() {
                     <p className="text-sm text-muted-foreground">{selectedSubscription.user_email}</p>
                   </div>
                   <div>
-                    <Label>Plan</Label>
-                    <p className="font-semibold capitalize">
-                      {selectedSubscription.user_type.replace("_", " ")} -{" "}
-                      {selectedSubscription.amount_egp} EGP/month
-                    </p>
+                    <Label>Amount</Label>
+                    <p className="font-semibold">{selectedSubscription.amount_egp} EGP/month</p>
                   </div>
                   <div>
                     <Label>Payment Reference</Label>

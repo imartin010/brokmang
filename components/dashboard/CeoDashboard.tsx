@@ -46,25 +46,43 @@ export default function CeoDashboard() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        console.error('[CEO Dashboard] Auth error:', authError);
+        return;
+      }
+      
+      if (!user) {
+        console.error('[CEO Dashboard] No user found');
+        return;
+      }
 
       // Get active agents count
-      const { count: agentCount } = await supabase
+      const { count: agentCount, error: agentsError } = await supabase
         .from('sales_agents')
         .select('*', { count: 'exact', head: true })
         .eq('is_active', true);
 
+      if (agentsError) {
+        console.error('[CEO Dashboard] Error fetching agents:', agentsError);
+      }
+
       // Get teams count (if teams table exists)
       let teamCount = 0;
       try {
-        const { count } = await supabase
+        const { count, error: teamsError } = await supabase
           .from('teams')
           .select('*', { count: 'exact', head: true })
           .eq('is_active', true);
-        teamCount = count || 0;
+        if (teamsError) {
+          console.warn('[CEO Dashboard] Teams table error (ignored):', teamsError);
+        } else {
+          teamCount = count || 0;
+        }
       } catch (error) {
         // Teams table might not exist, that's okay
+        console.warn('[CEO Dashboard] Teams table might not exist:', error);
         teamCount = 0;
       }
 
@@ -73,11 +91,15 @@ export default function CeoDashboard() {
       const currentMonth = now.getMonth() + 1;
       const currentYear = now.getFullYear();
       
-      const { data: currentScores } = await supabase
+      const { data: currentScores, error: scoresError } = await supabase
         .from('agent_monthly_scores')
         .select('score')
         .eq('year', currentYear)
         .eq('month', currentMonth);
+
+      if (scoresError) {
+        console.error('[CEO Dashboard] Error fetching monthly scores:', scoresError);
+      }
 
       // Calculate average performance
       const avgPerformance = currentScores && currentScores.length > 0
@@ -88,10 +110,14 @@ export default function CeoDashboard() {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
-      const { data: recentLogs } = await supabase
+      const { data: recentLogs, error: logsError } = await supabase
         .from('agent_daily_logs')
         .select('sales_amount')
         .gte('log_date', thirtyDaysAgo.toISOString().split('T')[0]);
+
+      if (logsError) {
+        console.error('[CEO Dashboard] Error fetching daily logs:', logsError);
+      }
 
       const totalRevenue = recentLogs?.reduce((sum, log) => sum + (log.sales_amount || 0), 0) || 0;
 
@@ -102,8 +128,9 @@ export default function CeoDashboard() {
         avgPerformance,
         teams: teamCount || 0,
       });
-    } catch (error) {
-      console.error('Error loading dashboard data:', error);
+    } catch (error: any) {
+      console.error('[CEO Dashboard] Unexpected error loading dashboard data:', error);
+      // Don't show alert - just log the error
     } finally {
       setLoading(false);
     }

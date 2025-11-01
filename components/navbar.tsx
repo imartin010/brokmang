@@ -26,6 +26,7 @@ import {
   LogOut,
   Menu,
   X,
+  Shield,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -70,6 +71,7 @@ export default function Navbar() {
         // Map database format to display format
         const mappedType = data.user_type === 'ceo' ? 'CEO' : 
                           data.user_type === 'team_leader' ? 'Team Leader' : 
+                          data.user_type === 'admin' ? 'admin' :
                           data.user_type;
         setUserType(mappedType);
       }
@@ -101,9 +103,13 @@ export default function Navbar() {
     { href: '/insights', label: 'Insights', icon: Lightbulb },
   ];
 
+  const adminLink = userType === 'admin' 
+    ? [{ href: '/admin', label: 'Admin', icon: Shield }]
+    : [];
+
   // Show CEO links only if user type is CEO
   const showCeoLinks = userType === 'CEO';
-  const links = [...baseLinks, ...(showCeoLinks ? ceoLinks : []), ...commonLinks];
+  const links = [...baseLinks, ...(showCeoLinks ? ceoLinks : []), ...commonLinks, ...adminLink];
 
   return (
     <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">

@@ -29,16 +29,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Verify admin has permission (check if user is CEO or Admin)
+    // Verify admin has permission (only Admins can validate AI subscriptions)
+    // CEOs and Team Leaders are clients who purchase subscriptions
     const { data: adminProfile } = await supabase
       .from("user_profiles")
       .select("user_type")
       .eq("user_id", admin_user_id)
       .single();
 
-    if (!adminProfile || !['ceo', 'admin'].includes(adminProfile.user_type)) {
+    if (!adminProfile || adminProfile.user_type !== 'admin') {
       return NextResponse.json(
-        { error: "Unauthorized. Only CEOs and Admins can validate payments." },
+        { error: "Unauthorized. Only Admins can validate AI subscription payments." },
         { status: 403 }
       );
     }
